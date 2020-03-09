@@ -1,0 +1,90 @@
+taggedMetricRules:
+  - name: all-tagged-metrics
+    actions:
+      # Convert to canonical metric.
+      - type: copy-to-metric
+        options:
+          metadataKeys:
+            - source-type
+            - label
+            - description
+            - units
+            - k8s.cluster
+            - k8s.namespace
+            - k8s.pod
+
+      # Drop tagged metric after copying to canonical.
+      - type: drop
+
+metricRules:
+  - name: add-proxied-by
+    actions:
+      - type: append-to-metadata-field
+        options:
+          key: processed-by
+          value: my-processor
+
+  - name: opencensus
+    matches:
+      - metadataFields:
+          source-type: zenoss/opencensus-go-exporter-zenoss
+
+    metricRules:
+      # grpc.io/server/completed_rpcs
+      - name: grpc_server_method_status
+        matches:
+          - dimensionKeys:
+              - source
+              - grpc_server_method
+              - grpc_server_status
+
+        actions:
+          - type: create-model
+            options:
+              nameTemplate: '{{{source}}}/{{{grpc_server_method}}}/{{{grpc_server_status}}}'
+              dropMetadataKeys:
+                - description
+                - label
+                - units
+
+          - type: send
+
+      # grpc.io/server/server_latency/mean
+      - name: grpc_server_method
+        matches:
+          - dimensionKeys:
+              - source
+              - grpc_server_method
+
+        actions:
+          - type: create-model
+            options:
+              nameTemplate: '{{{source}}}/{{{grpc_server_method}}}'
+              dropMetadataKeys:
+                - description
+                - label
+                - units
+
+          - type: send
+
+  # Drop and log any metrics not already sent by a "send" action above.
+  - name: cleanup
+    actions:
+      - name: metric.cleanup.log
+        type: log
+      - type: drop
+
+modelRules:
+  # Add impact from Kubernetes pod if the model knows its pod.
+  - name: impacted-by-k8s-pod
+    matches:
+      - metadataKeys:
+          - k8s.cluster
+          - k8s.namespace
+          - k8s.pod
+
+    actions:
+      - type: append-to-metadata-field
+        options:
+          key: impactFromDimensions
+          valueTemplate: 'k8s.cluster={{{k8s_cluster}}},k8s.namespace={{{k8s_namespace}}},k8s.pod={{{k8s_pod}}}'
