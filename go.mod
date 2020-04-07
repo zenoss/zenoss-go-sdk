@@ -12,7 +12,7 @@ require (
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
 	github.com/stretchr/testify v1.5.1
-	github.com/zenoss/zenoss-protobufs v0.0.0-20200404204527-306bc2cc890b
+	github.com/zenoss/zenoss-protobufs v1.0.0
 	go.opencensus.io v0.22.3
 	google.golang.org/api v0.20.0
 	google.golang.org/grpc v1.27.1
