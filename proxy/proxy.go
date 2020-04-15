@@ -238,7 +238,7 @@ func (p *Proxy) PutModels(ctx context.Context, models *data_receiver.Models) (*d
 	var r *data_receiver.ModelStatusResult
 
 	if models.DetailedResponse {
-		failedModels = make([]*data_receiver.ModelError, len(models.Models))
+		failedModels = make([]*data_receiver.ModelError, 0, len(models.Models))
 	}
 
 	if len(models.Models) > 0 {
