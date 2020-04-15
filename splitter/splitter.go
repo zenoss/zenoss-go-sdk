@@ -207,7 +207,7 @@ func (s *Splitter) PutModels(ctx context.Context, models *data_receiver.Models, 
 	var r *data_receiver.ModelStatusResult
 
 	if models.DetailedResponse {
-		failedModels = make([]*data_receiver.ModelError, len(models.Models)*len(s.outputs))
+		failedModels = make([]*data_receiver.ModelError, 0, len(models.Models)*len(s.outputs))
 	}
 
 	for _, output := range s.outputs {
