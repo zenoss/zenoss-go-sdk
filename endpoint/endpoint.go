@@ -3,13 +3,15 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 
 	"google.golang.org/api/support/bundler"
 	"google.golang.org/grpc"
@@ -139,6 +141,7 @@ type Endpoint struct {
 	tagMutators  []tag.Mutator
 
 	bundlers struct {
+		events         *bundler.Bundler
 		models         *bundler.Bundler
 		metrics        *bundler.Bundler
 		taggedMetrics  *bundler.Bundler
@@ -217,6 +220,10 @@ func New(config Config) (*Endpoint, error) {
 }
 
 func (e *Endpoint) createBundlers() {
+	e.bundlers.events = e.createBundler((*data_receiver.Event)(nil), func(bundle interface{}) {
+		e.putEvents(&data_receiver.Events{Events: bundle.([]*data_receiver.Event)})
+	})
+
 	e.bundlers.models = e.createBundler((*data_receiver.Model)(nil), func(bundle interface{}) {
 		e.putModels(&data_receiver.Models{Models: bundle.([]*data_receiver.Model)})
 	})
@@ -268,6 +275,51 @@ func (e *Endpoint) createBundler(itemExample interface{}, handler func(interface
 // Satisfies log.Logger interface.
 func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
+}
+
+// PutEvents things
+func (e *Endpoint) PutEvents(ctx context.Context, events *data_receiver.Events, opts ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
+	var failedEventsCount, succeededEventsCount int32
+	var failedEvents []*data_receiver.EventError
+	var err error
+
+	if events.DetailedResponse {
+		failedEvents = make([]*data_receiver.EventError, 0, len(events.Events))
+	}
+
+	for _, event := range events.Events {
+		if err = e.bundlers.events.Add(event, 1); err != nil {
+			failedEventsCount++
+
+			if events.DetailedResponse {
+				failedEvents = append(failedEvents, &data_receiver.EventError{
+					Error: err.Error(),
+					Event: event,
+				})
+			}
+		} else {
+			succeededEventsCount++
+		}
+	}
+
+	// Only record received and failed here.
+	// Record sent and failed (again) when actually sent.
+	// _ = stats.RecordWithTags(ctx, e.tagMutators,
+	// 	zstats.ReceivedModels.M(int64(len(models.Models))),
+	// 	zstats.FailedModels.M(int64(failedModelsCount)),
+	// )
+
+	return &data_receiver.EventStatusResult{
+		Failed:       failedEventsCount,
+		Succeeded:    succeededEventsCount,
+		FailedEvents: failedEvents,
+	}, nil
+}
+
+// PutEvent Stream Events of any type.
+func (e *Endpoint) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
+	return nil, status.Error(codes.Unimplemented, "PutEvent is not supported")
+
 }
 
 // PutMetric implements DataReceiverService PutMetric streaming RPC.
@@ -580,4 +632,56 @@ func (e *Endpoint) putModels(models *data_receiver.Models) {
 		zstats.SentModels.M(int64(succeededModelsCount)),
 		zstats.FailedModels.M(int64(failedModelsCount)),
 	)
+}
+
+func (e *Endpoint) putEvents(events *data_receiver.Events) {
+	ctx, cancel := context.WithTimeout(context.Background(), e.config.Timeout)
+	defer cancel()
+
+	if e.config.APIKey != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
+	}
+
+	var failedEventsCount, succeededEventsCount int32
+	var err error
+	var r *data_receiver.EventStatusResult
+
+	if len(events.Events) > 0 {
+		fmt.Println("endpont seding events")
+		if j, err := json.Marshal(events); err != nil {
+			fmt.Println(j)
+		}
+		if r, err = e.client.PutEvents(ctx, &data_receiver.Events{
+			Events: events.Events,
+		}); err != nil {
+			failedEventsCount += int32(len(events.Events))
+
+			log.Log(e, log.LevelWarning, log.Fields{
+				"error":     err,
+				"failed":    len(events.Events),
+				"succeeded": 0,
+			}, "failed to send events")
+		} else {
+			failedEventsCount += r.GetFailed()
+			succeededEventsCount += r.GetSucceeded()
+
+			if r.GetFailed() > 0 {
+				log.Log(e, log.LevelWarning, log.Fields{
+					"failed":    r.GetFailed(),
+					"succeeded": r.GetSucceeded(),
+				}, "failed to send some events")
+			} else {
+				log.Log(e, log.LevelDebug, log.Fields{
+					"failed":    0,
+					"succeeded": len(events.Events),
+				}, "sent events")
+			}
+		}
+	}
+
+	// // Only record sent and failed here. Received is recorded in PutModels.
+	// _ = stats.RecordWithTags(ctx, e.tagMutators,
+	// 	zstats.SentModels.M(int64(succeededModelsCount)),
+	// 	zstats.FailedModels.M(int64(failedModelsCount)),
+	// )
 }

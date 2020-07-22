@@ -79,6 +79,16 @@ func (s *Splitter) GetLoggerConfig() log.LoggerConfig {
 	return s.config.LoggerConfig
 }
 
+// PutEvent implements DataReceiverService PutEvent streaming RPC.
+func (s *Splitter) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
+	return nil, status.Error(codes.Unimplemented, "PutEvent is not supported")
+}
+
+// PutEvents implements DataReceiverService PutEvents unary RPC.
+func (s *Splitter) PutEvents(ctx context.Context, events *data_receiver.Events, opts ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
+	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
+}
+
 // PutMetric implements DataReceiverService PutMetric streaming RPC.
 func (s *Splitter) PutMetric(context.Context, ...grpc.CallOption) (data_receiver.DataReceiverService_PutMetricClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutMetric is not supported")

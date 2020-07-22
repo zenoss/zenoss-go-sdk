@@ -101,6 +101,18 @@ func (p *Proxy) GetLoggerConfig() log.LoggerConfig {
 	return p.config.LoggerConfig
 }
 
+// PutEvents implements DataReceiverService PutEvents unary RPC.
+func (p *Proxy) PutEvents(context.Context, *data_receiver.Events) (*data_receiver.EventStatusResult, error) {
+	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
+
+}
+
+// PutEvent implements DataReceiverService PutEvent streaming RPC.
+func (p *Proxy) PutEvent(data_receiver.DataReceiverService_PutEventServer) error {
+	return status.Error(codes.Unimplemented, "PutEvent is not supported")
+
+}
+
 // PutMetric is not supported.
 // Satisfies data_receiver.DataReceiverServiceServer interface.
 func (p *Proxy) PutMetric(data_receiver.DataReceiverService_PutMetricServer) error {
