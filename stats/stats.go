@@ -42,6 +42,15 @@ var (
 
 	// FailedModels is the number of models unsuccessfully sent.
 	FailedModels = stats.Int64("zenoss.io/failed_models", "Number of models unsuccessfully sent.", stats.UnitDimensionless)
+
+	// ReceivedEvents is the number of Events received.
+	ReceivedEvents = stats.Int64("zenoss.io/received_events", "Number of events received.", stats.UnitDimensionless)
+
+	// SentEvents is the number of Events successfully sent.
+	SentEvents = stats.Int64("zenoss.io/sent_events", "Number of events successfully sent.", stats.UnitDimensionless)
+
+	// FailedEvents is the number of Events unsuccessfully sent.
+	FailedEvents = stats.Int64("zenoss.io/failed_events", "Number of events unsuccessfully sent.", stats.UnitDimensionless)
 )
 
 var (

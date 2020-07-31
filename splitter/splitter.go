@@ -86,7 +86,50 @@ func (s *Splitter) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
 func (s *Splitter) PutEvents(ctx context.Context, events *data_receiver.Events, opts ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
-	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
+	var failedEventsCount, succeededEventsCount int32
+	var failedEvents []*data_receiver.EventError
+	var err error
+	var r *data_receiver.EventStatusResult
+
+	if events.DetailedResponse {
+		failedEvents = make([]*data_receiver.EventError, 0, len(events.Events)*len(s.outputs))
+	}
+
+	for _, output := range s.outputs {
+		if len(events.Events) > 0 {
+			if r, err = output.PutEvents(ctx, events, opts...); err != nil {
+				failedEventsCount += int32(len(events.Events))
+
+				if events.DetailedResponse {
+					for _, e := range events.Events {
+						failedEvents = append(failedEvents, &data_receiver.EventError{
+							Error: err.Error(),
+							Event: e,
+						})
+					}
+				}
+			} else {
+				failedEventsCount += r.GetFailed()
+				succeededEventsCount += r.GetSucceeded()
+
+				if events.DetailedResponse {
+					failedEvents = append(failedEvents, r.GetFailedEvents()...)
+				}
+			}
+		}
+	}
+
+	_ = stats.RecordWithTags(ctx, s.tagMutators,
+		zstats.ReceivedEvents.M(int64(len(events.Events))),
+		zstats.SentEvents.M(int64(succeededEventsCount)),
+		zstats.FailedEvents.M(int64(failedEventsCount)),
+	)
+
+	return &data_receiver.EventStatusResult{
+		Failed:       failedEventsCount,
+		Succeeded:    succeededEventsCount,
+		FailedEvents: failedEvents,
+	}, nil
 }
 
 // PutMetric implements DataReceiverService PutMetric streaming RPC.

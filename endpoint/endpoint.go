@@ -3,8 +3,6 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"go.opencensus.io/plugin/ocgrpc"
@@ -220,6 +218,7 @@ func New(config Config) (*Endpoint, error) {
 }
 
 func (e *Endpoint) createBundlers() {
+
 	e.bundlers.events = e.createBundler((*data_receiver.Event)(nil), func(bundle interface{}) {
 		e.putEvents(&data_receiver.Events{Events: bundle.([]*data_receiver.Event)})
 	})
@@ -277,7 +276,7 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
 }
 
-// PutEvents things
+// PutEvents implements DataReceiverService PutEvents unary RPC.
 func (e *Endpoint) PutEvents(ctx context.Context, events *data_receiver.Events, opts ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
 	var failedEventsCount, succeededEventsCount int32
 	var failedEvents []*data_receiver.EventError
@@ -304,10 +303,10 @@ func (e *Endpoint) PutEvents(ctx context.Context, events *data_receiver.Events, 
 
 	// Only record received and failed here.
 	// Record sent and failed (again) when actually sent.
-	// _ = stats.RecordWithTags(ctx, e.tagMutators,
-	// 	zstats.ReceivedModels.M(int64(len(models.Models))),
-	// 	zstats.FailedModels.M(int64(failedModelsCount)),
-	// )
+	_ = stats.RecordWithTags(ctx, e.tagMutators,
+		zstats.ReceivedEvents.M(int64(len(events.Events))),
+		zstats.FailedEvents.M(int64(failedEventsCount)),
+	)
 
 	return &data_receiver.EventStatusResult{
 		Failed:       failedEventsCount,
@@ -316,7 +315,7 @@ func (e *Endpoint) PutEvents(ctx context.Context, events *data_receiver.Events, 
 	}, nil
 }
 
-// PutEvent Stream Events of any type.
+// PutEvent implements DataReceiverService PutEvent streaming RPC.
 func (e *Endpoint) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutEvent is not supported")
 
@@ -466,6 +465,7 @@ func (e *Endpoint) Flush() {
 	e.bundlers.metrics.Flush()
 	e.bundlers.compactMetrics.Flush()
 	e.bundlers.taggedMetrics.Flush()
+	e.bundlers.events.Flush()
 }
 
 // putMetrics is called by Endpoint.bundlers.*metrics.
@@ -647,10 +647,6 @@ func (e *Endpoint) putEvents(events *data_receiver.Events) {
 	var r *data_receiver.EventStatusResult
 
 	if len(events.Events) > 0 {
-		fmt.Println("endpont seding events")
-		if j, err := json.Marshal(events); err != nil {
-			fmt.Println(j)
-		}
 		if r, err = e.client.PutEvents(ctx, &data_receiver.Events{
 			Events: events.Events,
 		}); err != nil {
@@ -679,9 +675,9 @@ func (e *Endpoint) putEvents(events *data_receiver.Events) {
 		}
 	}
 
-	// // Only record sent and failed here. Received is recorded in PutModels.
-	// _ = stats.RecordWithTags(ctx, e.tagMutators,
-	// 	zstats.SentModels.M(int64(succeededModelsCount)),
-	// 	zstats.FailedModels.M(int64(failedModelsCount)),
-	// )
+	// Only record sent and failed here. Received is recorded in PutEvents.
+	_ = stats.RecordWithTags(ctx, e.tagMutators,
+		zstats.SentEvents.M(int64(succeededEventsCount)),
+		zstats.FailedEvents.M(int64(failedEventsCount)),
+	)
 }

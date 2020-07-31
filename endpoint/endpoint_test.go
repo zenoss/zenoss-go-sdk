@@ -151,6 +151,53 @@ var _ = Describe("Endpoint", func() {
 				out.AssertNumberOfCalls(GinkgoT(), "PutModels", 1)
 			})
 		})
+
+		Context("PutEvent", func() {
+			It("is unimplemented", func() {
+				c, err := e.PutEvent(nil)
+				Ω(err).Should(HaveOccurred())
+				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutEvent is not supported")))
+				Ω(c).Should(BeNil())
+			})
+		})
+
+		Context("PutEvents", func() {
+			It("sends events", func() {
+				out.On("PutEvents", mock.Anything, mock.Anything).
+					Return(nil, nil)
+
+				r, err := e.PutEvents(context.TODO(), &data_receiver.Events{
+					DetailedResponse: true,
+					Events: []*data_receiver.Event{
+						{
+							Timestamp: time.Now().UnixNano() / 1e9,
+							Dimensions: map[string]string{
+								"source": "bob",
+								"app":    "toolbox",
+							},
+						},
+						{
+							Timestamp: time.Now().UnixNano() / 1e9,
+							Dimensions: map[string]string{
+								"source": "joe",
+								"app":    "toolbox",
+							},
+						},
+					},
+				})
+
+				Ω(err).ShouldNot(HaveOccurred())
+				Ω(r).ShouldNot(BeNil())
+				Ω(r.GetSucceeded()).Should(BeNumerically("==", 2))
+				Ω(r.GetFailed()).Should(BeNumerically("==", 0))
+
+				// Skip bundler delay thresholds.
+				e.Flush()
+
+				// Models should end up being sent to out.
+				out.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
+			})
+		})
 	})
 
 	Context("with a failing server", func() {
@@ -163,6 +210,9 @@ var _ = Describe("Endpoint", func() {
 				Return(nil, status.Error(codes.Internal, "internal error"))
 
 			out.On("PutModels", mock.Anything, mock.Anything).
+				Return(nil, status.Error(codes.Internal, "internal error"))
+
+			out.On("PutEvents", mock.Anything, mock.Anything).
 				Return(nil, status.Error(codes.Internal, "internal error"))
 		})
 
@@ -216,6 +266,27 @@ var _ = Describe("Endpoint", func() {
 				out.AssertNumberOfCalls(GinkgoT(), "PutModels", 1)
 			})
 		})
+
+		Context("PutEvents", func() {
+			It("appears to succeed", func() {
+				r, err := e.PutEvents(context.TODO(), &data_receiver.Events{
+					DetailedResponse: true,
+					Events: []*data_receiver.Event{
+						{Dimensions: map[string]string{"test": "value1"}},
+						{Dimensions: map[string]string{"test": "value2"}},
+					},
+				})
+
+				Ω(err).ShouldNot(HaveOccurred())
+				Ω(r).ShouldNot(BeNil())
+				Ω(r.GetSucceeded()).Should(BeNumerically("==", 2))
+				Ω(r.GetFailed()).Should(BeNumerically("==", 0))
+
+				e.Flush()
+
+				out.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
+			})
+		})
 	})
 
 	Context("with partially failing data", func() {
@@ -232,6 +303,12 @@ var _ = Describe("Endpoint", func() {
 
 			out.On("PutModels", mock.Anything, mock.Anything).
 				Return(&data_receiver.ModelStatusResult{
+					Failed:    1,
+					Succeeded: 1,
+				}, nil)
+
+			out.On("PutEvents", mock.Anything, mock.Anything).
+				Return(&data_receiver.EventStatusResult{
 					Failed:    1,
 					Succeeded: 1,
 				}, nil)
@@ -289,6 +366,28 @@ var _ = Describe("Endpoint", func() {
 				out.AssertNumberOfCalls(GinkgoT(), "PutModels", 1)
 
 				Ω(logOutput).Should(gbytes.Say(`failed to send some models fields=map\[endpoint:default failed:1 succeeded:1\]`))
+			})
+		})
+
+		Context("PutEvents", func() {
+			It("logs a warning", func() {
+				r, err := e.PutEvents(context.TODO(), &data_receiver.Events{
+					Events: []*data_receiver.Event{
+						{Dimensions: map[string]string{"test": "value1"}},
+						{Dimensions: map[string]string{"test": "value2"}},
+					},
+				})
+
+				Ω(err).ShouldNot(HaveOccurred())
+				Ω(r).ShouldNot(BeNil())
+				Ω(r.GetSucceeded()).Should(BeNumerically("==", 2))
+				Ω(r.GetFailed()).Should(BeNumerically("==", 0))
+
+				e.Flush()
+
+				out.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
+
+				Ω(logOutput).Should(gbytes.Say(`failed to send some events fields=map\[endpoint:default failed:1 succeeded:1\]`))
 			})
 		})
 	})
@@ -374,6 +473,36 @@ var _ = Describe("Endpoint", func() {
 
 				// One call is still made to deliver first model.
 				out.AssertNumberOfCalls(GinkgoT(), "PutModels", 1)
+			})
+		})
+
+		Context("PutEvents", func() {
+			It("has bundler errors for some models", func() {
+				out.On("PutEvents", mock.Anything, mock.Anything).
+					Return(nil, nil)
+
+				r, err := e.PutEvents(context.TODO(), &data_receiver.Events{
+					DetailedResponse: true,
+					Events: []*data_receiver.Event{
+						{Dimensions: map[string]string{"test": "value1"}},
+						{Dimensions: map[string]string{"test": "value2"}},
+					},
+				})
+
+				Ω(err).ShouldNot(HaveOccurred())
+				Ω(r).ShouldNot(BeNil())
+
+				// The first model succeeds.
+				Ω(r.GetSucceeded()).Should(BeNumerically("==", 1))
+
+				// The second model fails due to overflow.
+				Ω(r.GetFailed()).Should(BeNumerically("==", 1))
+				Ω(r.GetFailedEvents()).Should(HaveLen(1))
+
+				e.Flush()
+
+				// One call is still made to deliver first model.
+				out.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
 			})
 		})
 	})

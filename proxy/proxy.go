@@ -103,6 +103,7 @@ func (p *Proxy) GetLoggerConfig() log.LoggerConfig {
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
 func (p *Proxy) PutEvents(context.Context, *data_receiver.Events) (*data_receiver.EventStatusResult, error) {
+	//Not adding here since proxy functionality built into zdm
 	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
 
 }
