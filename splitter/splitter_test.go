@@ -158,7 +158,7 @@ var _ = Describe("Splitter", func() {
 				Ω(err).ShouldNot(HaveOccurred())
 				Ω(r).ShouldNot(BeNil())
 
-				// Models should be sent to each output..
+				// Events should be sent to each output..
 				out0.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
 				out1.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
 			})

@@ -194,7 +194,7 @@ var _ = Describe("Endpoint", func() {
 				// Skip bundler delay thresholds.
 				e.Flush()
 
-				// Models should end up being sent to out.
+				// Events should end up being sent to out.
 				out.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
 			})
 		})
@@ -477,7 +477,7 @@ var _ = Describe("Endpoint", func() {
 		})
 
 		Context("PutEvents", func() {
-			It("has bundler errors for some models", func() {
+			It("has bundler errors for some events", func() {
 				out.On("PutEvents", mock.Anything, mock.Anything).
 					Return(nil, nil)
 
@@ -492,16 +492,16 @@ var _ = Describe("Endpoint", func() {
 				Ω(err).ShouldNot(HaveOccurred())
 				Ω(r).ShouldNot(BeNil())
 
-				// The first model succeeds.
+				// The first event succeeds.
 				Ω(r.GetSucceeded()).Should(BeNumerically("==", 1))
 
-				// The second model fails due to overflow.
+				// The second event fails due to overflow.
 				Ω(r.GetFailed()).Should(BeNumerically("==", 1))
 				Ω(r.GetFailedEvents()).Should(HaveLen(1))
 
 				e.Flush()
 
-				// One call is still made to deliver first model.
+				// One call is still made to deliver first event.
 				out.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
 			})
 		})
