@@ -92,6 +92,17 @@ func (p *Processor) GetLoggerConfig() log.LoggerConfig {
 	return p.config.LoggerConfig
 }
 
+// PutEvent implements DataReceiverService PutEvent streaming RPC.
+func (p *Processor) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
+	return nil, status.Error(codes.Unimplemented, "PutEvent is not supported")
+}
+
+// PutEvents implements DataReceiverService PutEvents unary RPC.
+func (p *Processor) PutEvents(ctx context.Context, events *data_receiver.Events, opts ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
+	//TODO: impelement event processor rules
+	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
+}
+
 // PutMetric implements DataReceiverService PutMetric streaming RPC.
 func (p *Processor) PutMetric(context.Context, ...grpc.CallOption) (data_receiver.DataReceiverService_PutMetricClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutMetric is not supported")

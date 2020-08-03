@@ -134,6 +134,35 @@ var _ = Describe("Splitter", func() {
 				out1.AssertNumberOfCalls(GinkgoT(), "PutModels", 1)
 			})
 		})
+
+		Context("PutEvent", func() {
+			It("is unimplemented", func() {
+				c, err := s.PutEvent(nil)
+				Ω(err).Should(HaveOccurred())
+				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutEvent is not supported")))
+				Ω(c).Should(BeNil())
+			})
+		})
+
+		Context("PutEvents", func() {
+			It("sends events to all outputs", func() {
+				out0.On("PutEvents", mock.Anything, mock.Anything).Return(nil, nil)
+				out1.On("PutEvents", mock.Anything, mock.Anything).Return(
+					nil, status.Error(codes.Internal, "internal error"))
+
+				r, err := s.PutEvents(context.TODO(), &data_receiver.Events{
+					DetailedResponse: true,
+					Events:           []*data_receiver.Event{{Timestamp: time.Now().Unix() / 1e6}},
+				})
+
+				Ω(err).ShouldNot(HaveOccurred())
+				Ω(r).ShouldNot(BeNil())
+
+				// Events should be sent to each output..
+				out0.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
+				out1.AssertNumberOfCalls(GinkgoT(), "PutEvents", 1)
+			})
+		})
 	})
 
 	Context("with a minimal configuration", func() {
