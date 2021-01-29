@@ -102,9 +102,56 @@ func (p *Proxy) GetLoggerConfig() log.LoggerConfig {
 }
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
-func (p *Proxy) PutEvents(context.Context, *data_receiver.Events) (*data_receiver.EventStatusResult, error) {
-	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
+func (p *Proxy) PutEvents(ctx context.Context, events *data_receiver.Events) (*data_receiver.EventStatusResult, error) {
+	err := p.checkAPIKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		failedEventsCount    int32
+		succeededEventsCount int32
+		failedEvents         = make([]*data_receiver.EventError, 0)
+	)
+	if len(events.Events) > 0 {
+		if r, err := p.output.PutEvents(ctx, &data_receiver.Events{
+			DetailedResponse: events.DetailedResponse,
+			Events:           events.Events,
+		}); err != nil {
+			// TODO: capture failed events count
+			failedEventsCount += int32(len(events.Events))
 
+			if events.DetailedResponse {
+				for _, e := range events.Events {
+					failedEvents = append(failedEvents, &data_receiver.EventError{
+						Error: err.Error(),
+						Event: e,
+					})
+				}
+			}
+		} else {
+			// TODO: capture failed events count
+			failedEventsCount += r.GetFailed()
+			// TODO: capture succeeded events count
+			succeededEventsCount += r.GetSucceeded()
+
+			if events.DetailedResponse {
+				failedEvents = append(failedEvents, r.GetFailedEvents()...)
+			}
+
+		}
+	}
+
+	_ = stats.RecordWithTags(ctx, p.tagMutators,
+		zstats.ReceivedEvents.M(int64(len(events.Events))),
+		zstats.SentEvents.M(int64(succeededEventsCount)),
+		zstats.FailedEvents.M(int64(failedEventsCount)),
+	)
+
+	return &data_receiver.EventStatusResult{
+		Failed:       failedEventsCount,
+		Succeeded:    succeededEventsCount,
+		FailedEvents: failedEvents,
+	}, nil
 }
 
 // PutEvent implements DataReceiverService PutEvent streaming RPC.
