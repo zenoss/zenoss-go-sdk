@@ -2,6 +2,7 @@ package endpoint
 
 import (
 	"context"
+	"errors"
 	"crypto/tls"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
+	zproto "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
 
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
 	"github.com/zenoss/zenoss-go-sdk/log"
@@ -57,6 +59,7 @@ var (
 
 	// Ensure Endpoint implements log.Logger interface.
 	_ log.Logger = (*Endpoint)(nil)
+
 )
 
 // Config specifies an endpoint's configuration.
@@ -100,6 +103,7 @@ type Config struct {
 
 	// TestClient is for testing only. Do not set for normal use.
 	TestClient data_receiver.DataReceiverServiceClient
+
 }
 
 // BundlerConfig specifies a bundler configuration.
@@ -135,6 +139,7 @@ type BundlerConfig struct {
 type Endpoint struct {
 	config       Config
 	client       data_receiver.DataReceiverServiceClient
+	regclient    zproto.DataRegistryServiceClient
 	modelTracker *ttl.Tracker
 	tagMutators  []tag.Mutator
 
@@ -170,6 +175,8 @@ func New(config Config) (*Endpoint, error) {
 	}
 
 	var client data_receiver.DataReceiverServiceClient
+	var regclient zproto.DataRegistryServiceClient
+
 	if config.TestClient != nil {
 		client = config.TestClient
 	} else {
@@ -201,10 +208,15 @@ func New(config Config) (*Endpoint, error) {
 		conn, _ := grpc.Dial(config.Address, dialOptions...)
 		client = data_receiver.NewDataReceiverServiceClient(conn)
 	}
+	regDialOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+	regconn, _ := grpc.Dial(config.Address, regDialOption)
+	regclient = zproto.NewDataRegistryServiceClient(regconn)
+
 
 	e := &Endpoint{
 		config:       config,
 		client:       client,
+		regclient:    regclient,
 		modelTracker: ttl.NewTracker(config.ModelTTL, time.Second),
 		tagMutators: []tag.Mutator{
 			tag.Upsert(zstats.KeyModuleType, "endpoint"),
@@ -215,6 +227,12 @@ func New(config Config) (*Endpoint, error) {
 	e.createBundlers()
 
 	return e, nil
+}
+
+type RegisterResponse struct {
+	MetricID   string
+	MetricName string
+	Error      error
 }
 
 func (e *Endpoint) createBundlers() {
@@ -274,6 +292,47 @@ func (e *Endpoint) createBundler(itemExample interface{}, handler func(interface
 // Satisfies log.Logger interface.
 func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
+}
+
+// CreateOrUpdateMatrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
+func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) ([]*RegisterResponse, error){
+	if e.config.APIKey != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
+	}
+	stream, err := e.regclient.CreateOrUpdateMetrics(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, metricWrapper := range metricWrappers {
+		request := &zproto.RegisterMetricRequest{
+			Metric:     metricWrapper,
+			UpdateMode: zproto.UpdateMode_REPLACE, // replace by default
+		}
+		if err := stream.Send(request); err != nil {
+			log.Log(e, log.LevelError, log.Fields{
+				"metric wrapper":    metricWrapper,
+			}, "Error sending metric wrapper to data-registry")
+			return nil, err
+		}
+	}
+	registerResponse, err := stream.CloseAndRecv()
+	if err != nil {
+		log.Log(e, log.LevelError, log.Fields{}, "Error closing stream")
+		return nil, err
+	}
+
+	result := make([]*RegisterResponse, 0, len(metricWrappers))
+	for _, response := range registerResponse.Responses {
+		if response.Error != "" {
+			result = append(result, &RegisterResponse{Error: errors.New(response.Error)})
+		} else {
+			result = append(result, &RegisterResponse{
+				MetricID:   response.Response.InstanceId,
+				MetricName: response.Response.Name,
+			})
+		}
+	}
+	return result, nil
 }
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
