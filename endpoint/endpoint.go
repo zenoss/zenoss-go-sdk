@@ -226,6 +226,7 @@ func New(config Config) (*Endpoint, error) {
 	return e, nil
 }
 
+//RegisterResponse type gives access to metric id and name
 type RegisterResponse struct {
 	MetricID   string
 	MetricName string
@@ -291,7 +292,7 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
 }
 
-// CreateOrUpdateMatrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
+// CreateOrUpdateMetrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
 func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) ([]*RegisterResponse, error) {
 	if e.config.APIKey != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
