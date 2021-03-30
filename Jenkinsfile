@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'build-zenoss-appliance' }
+    agent { label '!qa-integrations' }
     stages {
         stage('Clone') {
             steps {
