@@ -1,5 +1,5 @@
 pipeline {
-    agent { dockerfile true }
+    agent { label 'build-zenoss-appliance' }
     stages {
         stage('Clone') {
             steps {
