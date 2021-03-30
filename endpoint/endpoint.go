@@ -2,8 +2,8 @@ package endpoint
 
 import (
 	"context"
-	"errors"
 	"crypto/tls"
+	"errors"
 	"time"
 
 	"go.opencensus.io/plugin/ocgrpc"
@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 	zproto "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
+	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
 	"github.com/zenoss/zenoss-go-sdk/log"
@@ -59,7 +59,6 @@ var (
 
 	// Ensure Endpoint implements log.Logger interface.
 	_ log.Logger = (*Endpoint)(nil)
-
 )
 
 // Config specifies an endpoint's configuration.
@@ -103,7 +102,6 @@ type Config struct {
 
 	// TestClient is for testing only. Do not set for normal use.
 	TestClient data_receiver.DataReceiverServiceClient
-
 }
 
 // BundlerConfig specifies a bundler configuration.
@@ -212,7 +210,6 @@ func New(config Config) (*Endpoint, error) {
 	regconn, _ := grpc.Dial(config.Address, regDialOption)
 	regclient = zproto.NewDataRegistryServiceClient(regconn)
 
-
 	e := &Endpoint{
 		config:       config,
 		client:       client,
@@ -295,7 +292,7 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 }
 
 // CreateOrUpdateMatrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
-func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) ([]*RegisterResponse, error){
+func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) ([]*RegisterResponse, error) {
 	if e.config.APIKey != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
 	}
@@ -310,7 +307,7 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*
 		}
 		if err := stream.Send(request); err != nil {
 			log.Log(e, log.LevelError, log.Fields{
-				"metric wrapper":    metricWrapper,
+				"metric wrapper": metricWrapper,
 			}, "Error sending metric wrapper to data-registry")
 			return nil, err
 		}
