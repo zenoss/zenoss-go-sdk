@@ -1,5 +1,5 @@
 pipeline {
-    agent { dockerfile true }
+    agent { dockerfile { label '!qa-integrations' } }
     stages {
         stage('Clone') {
             steps {
