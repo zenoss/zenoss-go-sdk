@@ -3,10 +3,10 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
-	"time"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
+	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 
@@ -205,7 +205,7 @@ func New(config Config) (*Endpoint, error) {
 		client = data_receiver.NewDataReceiverServiceClient(conn)
 		regDialOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
 		regconn, _ := grpc.Dial(config.Address, regDialOption)
-		regclient = data_registry.NewDataRegistryServiceClient(regconn)	
+		regclient = data_registry.NewDataRegistryServiceClient(regconn)
 	}
 
 	e := &Endpoint{
