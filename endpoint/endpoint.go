@@ -3,10 +3,10 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
+	"time"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 
