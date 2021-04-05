@@ -3,23 +3,19 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
-	"time"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-
+	"time"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-
 	"google.golang.org/api/support/bundler"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
 	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
-
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
 	"github.com/zenoss/zenoss-go-sdk/log"
 	zstats "github.com/zenoss/zenoss-go-sdk/stats"
