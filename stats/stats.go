@@ -51,6 +51,12 @@ var (
 
 	// FailedEvents is the number of Events unsuccessfully sent.
 	FailedEvents = stats.Int64("zenoss.io/failed_events", "Number of events unsuccessfully sent.", stats.UnitDimensionless)
+
+	// FailedRegistrations is the number of metric registration attempts that were unsuccessfull.
+	FailedRegistrations = stats.Int64("zenoss.io/failed_registrations", "Number of registrations unsuccessfull.", stats.UnitDimensionless)
+
+	// SucceededRegistrations is the number of metric registration attempts that were successfull.
+	SucceededRegistrations = stats.Int64("zenoss.io/succeeded_registrations", "Number of registrations successfull.", stats.UnitDimensionless)
 )
 
 var (

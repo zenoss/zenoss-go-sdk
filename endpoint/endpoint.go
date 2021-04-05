@@ -3,7 +3,6 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"time"
 
 	"go.opencensus.io/plugin/ocgrpc"
@@ -19,7 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	zproto "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
+	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
@@ -137,7 +136,7 @@ type BundlerConfig struct {
 type Endpoint struct {
 	config       Config
 	client       data_receiver.DataReceiverServiceClient
-	regclient    zproto.DataRegistryServiceClient
+	regclient    data_registry.DataRegistryServiceClient
 	modelTracker *ttl.Tracker
 	tagMutators  []tag.Mutator
 
@@ -173,7 +172,7 @@ func New(config Config) (*Endpoint, error) {
 	}
 
 	var client data_receiver.DataReceiverServiceClient
-	var regclient zproto.DataRegistryServiceClient
+	var regclient data_registry.DataRegistryServiceClient
 
 	if config.TestClient != nil {
 		client = config.TestClient
@@ -205,10 +204,10 @@ func New(config Config) (*Endpoint, error) {
 		// Dial doesn't block by default. So no error can actually occur.
 		conn, _ := grpc.Dial(config.Address, dialOptions...)
 		client = data_receiver.NewDataReceiverServiceClient(conn)
+		regDialOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+		regconn, _ := grpc.Dial(config.Address, regDialOption)
+		regclient = data_registry.NewDataRegistryServiceClient(regconn)
 	}
-	regDialOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
-	regconn, _ := grpc.Dial(config.Address, regDialOption)
-	regclient = zproto.NewDataRegistryServiceClient(regconn)
 
 	e := &Endpoint{
 		config:       config,
@@ -224,13 +223,6 @@ func New(config Config) (*Endpoint, error) {
 	e.createBundlers()
 
 	return e, nil
-}
-
-//RegisterResponse type gives access to metric id and name
-type RegisterResponse struct {
-	MetricID   string
-	MetricName string
-	Error      error
 }
 
 func (e *Endpoint) createBundlers() {
@@ -293,7 +285,8 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 }
 
 // CreateOrUpdateMetrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
-func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) ([]*RegisterResponse, error) {
+func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) (*data_registry.RegisterMetricsResponse, error) {
+	var failedRegistrationCount, succeededRegistrationsCount int32
 	if e.config.APIKey != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
 	}
@@ -302,35 +295,43 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*
 		return nil, err
 	}
 	for _, metricWrapper := range metricWrappers {
-		request := &zproto.RegisterMetricRequest{
+		request := &data_registry.RegisterMetricRequest{
 			Metric:     metricWrapper,
-			UpdateMode: zproto.UpdateMode_REPLACE, // replace by default
+			UpdateMode: data_registry.UpdateMode_REPLACE, // replace by default
 		}
 		if err := stream.Send(request); err != nil {
 			log.Log(e, log.LevelError, log.Fields{
 				"metric wrapper": metricWrapper,
-			}, "Error sending metric wrapper to data-registry")
+			}, "Error sending metric wrapper to data_registry")
+			_ = stats.RecordWithTags(ctx, e.tagMutators,
+				zstats.SucceededRegistrations.M(int64(succeededRegistrationsCount)),
+				zstats.FailedRegistrations.M(int64(len(metricWrappers))),
+			)
 			return nil, err
 		}
 	}
 	registerResponse, err := stream.CloseAndRecv()
 	if err != nil {
 		log.Log(e, log.LevelError, log.Fields{}, "Error closing stream")
+		_ = stats.RecordWithTags(ctx, e.tagMutators,
+			zstats.SucceededRegistrations.M(int64(succeededRegistrationsCount)),
+			zstats.FailedRegistrations.M(int64(len(metricWrappers))),
+		)
 		return nil, err
 	}
 
-	result := make([]*RegisterResponse, 0, len(metricWrappers))
 	for _, response := range registerResponse.Responses {
 		if response.Error != "" {
-			result = append(result, &RegisterResponse{Error: errors.New(response.Error)})
+			failedRegistrationCount++
 		} else {
-			result = append(result, &RegisterResponse{
-				MetricID:   response.Response.InstanceId,
-				MetricName: response.Response.Name,
-			})
+			succeededRegistrationsCount++
 		}
 	}
-	return result, nil
+	_ = stats.RecordWithTags(ctx, e.tagMutators,
+		zstats.SucceededRegistrations.M(int64(succeededRegistrationsCount)),
+		zstats.FailedRegistrations.M(int64(failedRegistrationCount)),
+	)
+	return registerResponse, nil
 }
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
