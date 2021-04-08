@@ -21,9 +21,17 @@ import (
 	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
+	"bytes"
+	"encoding/base64"
+	"encoding/binary"
+	"fmt"
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/spaolacci/murmur3"
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
 	"github.com/zenoss/zenoss-go-sdk/log"
 	zstats "github.com/zenoss/zenoss-go-sdk/stats"
+	"sort"
+	"strconv"
 )
 
 const (
@@ -282,6 +290,41 @@ func (e *Endpoint) createBundler(itemExample interface{}, handler func(interface
 // Satisfies log.Logger interface.
 func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
+}
+
+//GetCacheKey generates key to use for metric whose id is going to be cached
+func (e *Endpoint) GetCacheKey(metric *data_receiver.Metric, tenant string) string {
+	var typeNum uint32 = 42
+	dims := metric.Dimensions
+
+	keys := []string{}
+	for k := range dims {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var flatDims bytes.Buffer
+	for _, k := range keys {
+		flatDims.WriteString(fmt.Sprintf("%s=%s,", k, dims[k]))
+	}
+
+	localKey := fmt.Sprintf("%s:%s:%s", metric.Metric, tenant, flatDims.String())
+	hash := murmur3.New128()
+	hash.Write([]byte(localKey))
+	v1, v2 := hash.Sum128()
+	data := make([]byte, 4+(8*2))
+	binary.LittleEndian.PutUint32(data, typeNum)
+	binary.LittleEndian.PutUint64(data[4:], v1)
+	binary.LittleEndian.PutUint64(data[12:], v2)
+	return base64.URLEncoding.EncodeToString(data)
+}
+
+//GetMetadataHash generates hash of metadata fields of the metric whose id is going to be cached
+func (e *Endpoint) GetMetadataHash(metric *data_receiver.Metric) string {
+	hasher := murmur3.New64()
+	jm := jsonpb.Marshaler{Indent: "  "}
+	js, _ := jm.MarshalToString(metric.MetadataFields)
+	hasher.Write([]byte(js))
+	return strconv.FormatUint(hasher.Sum64(), 10)
 }
 
 // CreateOrUpdateMetrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
