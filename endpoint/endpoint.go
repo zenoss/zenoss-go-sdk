@@ -173,8 +173,8 @@ type Endpoint struct {
 	}
 }
 
-// MetricIdNameAndHash gives a metrics id, name, and hash
-type MetricIdNameAndHash struct {
+// MetricIDNameAndHash gives a metrics id, name, and hash
+type MetricIDNameAndHash struct {
 	hash, id, name string
 }
 
@@ -410,9 +410,9 @@ func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_recei
 		if err == nil {
 			// cache hit, return metric with its id and name if metadata not changed
 			currentMetadataHash := e.GetMetadataHash(metric)
-			if currentMetadataHash == cacheentry.(MetricIdNameAndHash).hash {
+			if currentMetadataHash == cacheentry.(MetricIDNameAndHash).hash {
 				cachedCompctMetric := &data_receiver.CompactMetric{
-					Id:        cacheentry.(MetricIdNameAndHash).id,
+					Id:        cacheentry.(MetricIDNameAndHash).id,
 					Timestamp: metric.Timestamp,
 					Value:     metric.Value,
 				}
@@ -472,9 +472,9 @@ func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Me
 }
 
 //registerMetrics will register metric using dataRegistry
-func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver.Metric) ([]bool, []MetricIdNameAndHash) {
+func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver.Metric) ([]bool, []MetricIDNameAndHash) {
 	successes := make([]bool, len(metrics), len(metrics))
-	metricIDsNamesAndHashes := make([]MetricIdNameAndHash, 0, len(metrics))
+	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, 0, len(metrics))
 	registerMetricsresponse, err := e.CreateOrUpdateMetrics(ctx, metrics)
 	if err != nil {
 		log.Log(e, log.LevelError, log.Fields{}, "Unable to register metrics")
@@ -484,12 +484,12 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 	for i, response := range registerMetricsresponse.Responses {
 		if response.Error != "" {
 			log.Log(e, log.LevelError, log.Fields{}, "Metric from batch was not registered")
-			metricIDsNamesAndHashes = append(metricIDsNamesAndHashes, MetricIdNameAndHash{})
+			metricIDsNamesAndHashes = append(metricIDsNamesAndHashes, MetricIDNameAndHash{})
 			continue
 		}
 		metricMetadataHash := e.GetMetadataHash(metrics[i])
 		metricIDsNamesAndHashes = append(metricIDsNamesAndHashes,
-			MetricIdNameAndHash{id: response.Response.InstanceId,
+			MetricIDNameAndHash{id: response.Response.InstanceId,
 				name: response.Response.Name,
 				hash: metricMetadataHash})
 		successes[i] = true
