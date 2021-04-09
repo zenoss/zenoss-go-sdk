@@ -3,6 +3,7 @@ package endpoint
 import (
 	"context"
 	"crypto/tls"
+	"math/rand"
 	"time"
 
 	"go.opencensus.io/plugin/ocgrpc"
@@ -22,16 +23,15 @@ import (
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
 	"bytes"
-	"encoding/base64"
-	"encoding/binary"
 	"fmt"
-	"github.com/golang/protobuf/jsonpb"
+	"sort"
+	"strconv"
+
+	"github.com/ReneKroon/ttlcache/v2"
 	"github.com/spaolacci/murmur3"
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
 	"github.com/zenoss/zenoss-go-sdk/log"
 	zstats "github.com/zenoss/zenoss-go-sdk/stats"
-	"sort"
-	"strconv"
 )
 
 const (
@@ -109,6 +109,21 @@ type Config struct {
 
 	// TestClient is for testing only. Do not set for normal use.
 	TestClient data_receiver.DataReceiverServiceClient
+
+	// TestRegClient is for testing only. Do not set for normal use.
+	TestRegClient data_registry.DataRegistryServiceClient
+
+	// Min TTL for local cache
+	MinTTL int
+
+	// Max TTL for local cache
+	MaxTTL int
+
+	// CacheSizeLimit for local cache
+	CacheSizeLimit int
+
+	// ExcludedTags are tags to exclude when generating hash
+	ExcludedTags []string
 }
 
 // BundlerConfig specifies a bundler configuration.
@@ -147,6 +162,7 @@ type Endpoint struct {
 	regclient    data_registry.DataRegistryServiceClient
 	modelTracker *ttl.Tracker
 	tagMutators  []tag.Mutator
+	cache        *ttlcache.Cache
 
 	bundlers struct {
 		events         *bundler.Bundler
@@ -155,6 +171,30 @@ type Endpoint struct {
 		taggedMetrics  *bundler.Bundler
 		compactMetrics *bundler.Bundler
 	}
+}
+
+// MetricIdNameAndHash gives a metrics id, name, and hash
+type MetricIdNameAndHash struct {
+	hash, id, name string
+}
+
+// initCache initialises the ttl cache used to store metric ids
+func initCache(cacheSizeLimit int, minTTL int, maxTTL int) *ttlcache.Cache {
+	cache := ttlcache.NewCache()
+	cache.SetTTL(getCacheItemTTL(minTTL, maxTTL))
+	cache.SkipTTLExtensionOnHit(true)
+	cache.SetCacheSizeLimit(cacheSizeLimit)
+	return cache
+}
+
+// getCacheItemTTL gets a ttl selected at randon within max and min ttl limits
+func getCacheItemTTL(minTTL int, maxTTL int) time.Duration {
+	return time.Duration(getRandInRange(minTTL, maxTTL)) * time.Second
+}
+
+// getRandInRange gets a random number in range
+func getRandInRange(min, max int) int {
+	return rand.Intn(max-min) + min
 }
 
 // New returns a new Endpoint with specified configuration.
@@ -184,6 +224,9 @@ func New(config Config) (*Endpoint, error) {
 
 	if config.TestClient != nil {
 		client = config.TestClient
+		if config.TestRegClient != nil {
+			regclient = config.TestRegClient
+		}
 	} else {
 		dialOptions := make([]grpc.DialOption, 4)
 
@@ -217,10 +260,16 @@ func New(config Config) (*Endpoint, error) {
 		regclient = data_registry.NewDataRegistryServiceClient(regconn)
 	}
 
+	var cache *ttlcache.Cache
+	if config.MinTTL != 0 && config.MaxTTL != 0 && config.CacheSizeLimit != 0 {
+		cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
+	}
+
 	e := &Endpoint{
 		config:       config,
 		client:       client,
 		regclient:    regclient,
+		cache:        cache,
 		modelTracker: ttl.NewTracker(config.ModelTTL, time.Second),
 		tagMutators: []tag.Mutator{
 			tag.Upsert(zstats.KeyModuleType, "endpoint"),
@@ -292,11 +341,9 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
 }
 
-//GetCacheKey generates key to use for metric whose id is going to be cached
-func (e *Endpoint) GetCacheKey(metric *data_receiver.Metric, tenant string) string {
-	var typeNum uint32 = 42
+//GetMetricCacheKey generates key to use for metric whose id is going to be cached
+func (e *Endpoint) GetMetricCacheKey(metric *data_receiver.Metric) string {
 	dims := metric.Dimensions
-
 	keys := []string{}
 	for k := range dims {
 		keys = append(keys, k)
@@ -307,28 +354,151 @@ func (e *Endpoint) GetCacheKey(metric *data_receiver.Metric, tenant string) stri
 		flatDims.WriteString(fmt.Sprintf("%s=%s,", k, dims[k]))
 	}
 
-	localKey := fmt.Sprintf("%s:%s:%s", metric.Metric, tenant, flatDims.String())
+	localKey := fmt.Sprintf("%s:%s", metric.Metric, flatDims.String())
 	hash := murmur3.New128()
 	hash.Write([]byte(localKey))
 	v1, v2 := hash.Sum128()
-	data := make([]byte, 4+(8*2))
-	binary.LittleEndian.PutUint32(data, typeNum)
-	binary.LittleEndian.PutUint64(data[4:], v1)
-	binary.LittleEndian.PutUint64(data[12:], v2)
-	return base64.URLEncoding.EncodeToString(data)
+	return strconv.FormatUint(v1, 10) + strconv.FormatUint(v2, 10)
+}
+
+// tagExcluded is called by GetMetadataHash
+func tagExcluded(tag string, excludedTags []string) bool {
+	if excludedTags == nil {
+		return false
+	}
+	for _, s := range excludedTags {
+		if s == tag {
+			return true
+		}
+	}
+	return false
 }
 
 //GetMetadataHash generates hash of metadata fields of the metric whose id is going to be cached
 func (e *Endpoint) GetMetadataHash(metric *data_receiver.Metric) string {
 	hasher := murmur3.New64()
-	jm := jsonpb.Marshaler{Indent: "  "}
-	js, _ := jm.MarshalToString(metric.MetadataFields)
-	hasher.Write([]byte(js))
+	var buf []byte
+	metadatafieldmap := metric.MetadataFields.GetFields()
+	keys := make([]string, 0, len(metadatafieldmap))
+	for k := range metadatafieldmap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if tagExcluded(k, e.config.ExcludedTags) {
+			continue
+		}
+		localEntry := fmt.Sprintf("%s:%s", k, metadatafieldmap[k])
+		buf = append(buf, localEntry...)
+	}
+	hasher.Write(buf)
 	return strconv.FormatUint(hasher.Sum64(), 10)
 }
 
+//checkCache checks the cache to see if metruc is already registered or needs update
+func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_receiver.CompactMetric, []*data_receiver.Metric, []string) {
+	var (
+		cachedCompctMetrics = make([]*data_receiver.CompactMetric, 0, len(allmetrics))
+		misses              = make([]*data_receiver.Metric, 0, len(allmetrics))
+		missKeys            = make([]string, 0, len(allmetrics))
+	)
+	for _, metric := range allmetrics {
+		currentMetricCacheKey := e.GetMetricCacheKey(metric)
+		log.Log(e, log.LevelDebug, log.Fields{"currentMetricCacheKey": currentMetricCacheKey}, "Generated key for metric cache")
+
+		cacheentry, err := e.cache.Get(currentMetricCacheKey)
+		if err == nil {
+			// cache hit, return metric with its id and name if metadata not changed
+			currentMetadataHash := e.GetMetadataHash(metric)
+			if currentMetadataHash == cacheentry.(MetricIdNameAndHash).hash {
+				cachedCompctMetric := &data_receiver.CompactMetric{
+					Id:        cacheentry.(MetricIdNameAndHash).id,
+					Timestamp: metric.Timestamp,
+					Value:     metric.Value,
+				}
+				cachedCompctMetrics = append(cachedCompctMetrics, cachedCompctMetric)
+			} else {
+				log.Log(e, log.LevelInfo, log.Fields{"metric": metric}, "Metadata change on metric requires re-registry")
+				misses = append(misses, metric)
+				missKeys = append(missKeys, currentMetricCacheKey)
+			}
+		} else {
+			misses = append(misses, metric)
+			missKeys = append(missKeys, currentMetricCacheKey)
+		}
+	}
+	return cachedCompctMetrics, misses, missKeys
+}
+
+//ConvertMetrics will convert canonical metrics to compact
+func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Metric) ([]*data_receiver.CompactMetric, []*data_receiver.Metric) {
+	// cachedCompctMetrics - compact metrics with ids from cache
+	// misses - canonical metrics which do not have an id in cache Or that need re-registration due to metadta chenge
+	// missKeys - keys for caching the canonical metrics that are not currently in cache or need re-registration
+	cachedCompctMetrics, misses, missKeys := e.checkCache(batch)
+	failedMetrics := make([]*data_receiver.Metric, 0)
+	log.Log(e, log.LevelInfo, log.Fields{"number of misses": len(misses)}, "Number of metrics misses in cache ")
+	registeredcompactmetrics := make([]*data_receiver.CompactMetric, 0, len(misses))
+	if len(misses) > 0 {
+		successesAndFailures, metricIdsNamesAndHashes := e.registerMetrics(ctx, misses)
+		if len(metricIdsNamesAndHashes) > 0 { // it is empty if the register call completely failed
+			for i, ok := range successesAndFailures {
+				if ok {
+					metricIDNameAndHash := metricIdsNamesAndHashes[i]
+					metric := misses[i]
+					metricCacheKey := missKeys[i]
+					zcm := &data_receiver.CompactMetric{
+						Id:        metricIDNameAndHash.id,
+						Timestamp: metric.Timestamp,
+						Value:     metric.Value,
+					}
+					registeredcompactmetrics = append(registeredcompactmetrics, zcm)
+					e.cache.SetWithTTL(metricCacheKey, metricIDNameAndHash, getCacheItemTTL(e.config.MinTTL, e.config.MaxTTL))
+				} else {
+					failedMetrics = append(failedMetrics, misses[i])
+				}
+			}
+		} else {
+			failedMetrics = misses
+		}
+		log.Log(e, log.LevelInfo, log.Fields{"len failed metrics": len(failedMetrics)}, "Number of metrics failed to convert ")
+	}
+	if len(registeredcompactmetrics) > 0 {
+		cachedCompctMetrics = append(cachedCompctMetrics, registeredcompactmetrics...)
+		log.Log(e, log.LevelInfo, log.Fields{"len converted metrics": len(cachedCompctMetrics)}, "Number of metrics converted ")
+	}
+
+	return cachedCompctMetrics, failedMetrics
+}
+
+//registerMetrics will register metric using dataRegistry
+func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver.Metric) ([]bool, []MetricIdNameAndHash) {
+	successes := make([]bool, len(metrics), len(metrics))
+	metricIDsNamesAndHashes := make([]MetricIdNameAndHash, 0, len(metrics))
+	registerMetricsresponse, err := e.CreateOrUpdateMetrics(ctx, metrics)
+	if err != nil {
+		log.Log(e, log.LevelError, log.Fields{}, "Unable to register metrics")
+		return successes, metricIDsNamesAndHashes
+	}
+
+	for i, response := range registerMetricsresponse.Responses {
+		if response.Error != "" {
+			log.Log(e, log.LevelError, log.Fields{}, "Metric from batch was not registered")
+			metricIDsNamesAndHashes = append(metricIDsNamesAndHashes, MetricIdNameAndHash{})
+			continue
+		}
+		metricMetadataHash := e.GetMetadataHash(metrics[i])
+		metricIDsNamesAndHashes = append(metricIDsNamesAndHashes,
+			MetricIdNameAndHash{id: response.Response.InstanceId,
+				name: response.Response.Name,
+				hash: metricMetadataHash})
+		successes[i] = true
+	}
+	return successes, metricIDsNamesAndHashes
+}
+
 // CreateOrUpdateMetrics uses DataRegistryService CreateOrUpdateMetrics to create or update metrics
-func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*data_receiver.MetricWrapper) (*data_registry.RegisterMetricsResponse, error) {
+func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metrics []*data_receiver.Metric) (*data_registry.RegisterMetricsResponse, error) {
 	var failedRegistrationCount, succeededRegistrationsCount int32
 	if e.config.APIKey != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
@@ -337,7 +507,10 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*
 	if err != nil {
 		return nil, err
 	}
-	for _, metricWrapper := range metricWrappers {
+	for _, metric := range metrics {
+		metricWrapper := &data_receiver.MetricWrapper{
+			MetricType: &data_receiver.MetricWrapper_Canonical{Canonical: metric},
+		}
 		request := &data_registry.RegisterMetricRequest{
 			Metric:     metricWrapper,
 			UpdateMode: data_registry.UpdateMode_REPLACE, // replace by default
@@ -348,7 +521,7 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*
 			}, "Error sending metric wrapper to data_registry")
 			_ = stats.RecordWithTags(ctx, e.tagMutators,
 				zstats.SucceededRegistrations.M(int64(succeededRegistrationsCount)),
-				zstats.FailedRegistrations.M(int64(len(metricWrappers))),
+				zstats.FailedRegistrations.M(int64(len(metrics))),
 			)
 			return nil, err
 		}
@@ -358,7 +531,7 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metricWrappers []*
 		log.Log(e, log.LevelError, log.Fields{}, "Error closing stream")
 		_ = stats.RecordWithTags(ctx, e.tagMutators,
 			zstats.SucceededRegistrations.M(int64(succeededRegistrationsCount)),
-			zstats.FailedRegistrations.M(int64(len(metricWrappers))),
+			zstats.FailedRegistrations.M(int64(len(metrics))),
 		)
 		return nil, err
 	}
