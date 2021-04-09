@@ -142,7 +142,7 @@ var _ = Describe("Endpoint", func() {
 						},
 						MetadataFields: &_struct.Struct{
 							Fields: map[string]*_struct.Value{
-								"srckey": &_struct.Value{
+								"srckey": {
 									Kind: &_struct.Value_StringValue{
 										StringValue: "srcvalue",
 									},
