@@ -17,10 +17,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
-
+	_struct "github.com/golang/protobuf/ptypes/struct"
 	"github.com/zenoss/zenoss-go-sdk/endpoint"
 	"github.com/zenoss/zenoss-go-sdk/log"
+	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
+	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 )
 
 func TestEndpoint(t *testing.T) {
@@ -33,11 +34,13 @@ func TestEndpoint(t *testing.T) {
 var _ = Describe("Endpoint", func() {
 	var e *endpoint.Endpoint
 	var out *data_receiver.MockDataReceiverServiceClient
+	var regout *data_registry.MockDataRegistryServiceClient
 	var err error
 	var logOutput *gbytes.Buffer
 
 	BeforeEach(func() {
 		out = &data_receiver.MockDataReceiverServiceClient{}
+		regout = &data_registry.MockDataRegistryServiceClient{}
 		logOutput = gbytes.NewBuffer()
 		stdlog.SetOutput(logOutput)
 	})
@@ -49,8 +52,12 @@ var _ = Describe("Endpoint", func() {
 	Context("with basic configuration", func() {
 		BeforeEach(func() {
 			e, err = endpoint.New(endpoint.Config{
-				APIKey:     "x",
-				TestClient: out,
+				APIKey:         "x",
+				TestClient:     out,
+				TestRegClient:  regout,
+				MinTTL:         10000,
+				MaxTTL:         100000,
+				CacheSizeLimit: 200000,
 			})
 		})
 
@@ -104,6 +111,54 @@ var _ = Describe("Endpoint", func() {
 
 				// Each type of metric should be sent to out in a separate call.
 				out.AssertNumberOfCalls(GinkgoT(), "PutMetrics", 3)
+			})
+		})
+
+		Context("ConvertMetrics", func() {
+			It("converts canonical metrics to compact metrics", func() {
+				var responses = make([]*data_registry.RegisterMetricVerboseResponse, 0)
+				verboseResponse := &data_registry.RegisterMetricVerboseResponse{
+					Response: &data_registry.RegisterMetricResponse{
+						InstanceId: "id123456canonical1",
+						Name:       "canonical1", // replace by default
+					},
+				}
+				responses = append(responses, verboseResponse)
+				regCreateOrUpdateStreamingClientMock := &data_registry.MockDataRegistryService_CreateOrUpdateMetricsClient{}
+				regCreateOrUpdateStreamingClientMock.On("Send", mock.Anything).Return(nil)
+				regCreateOrUpdateStreamingClientMock.On("CloseAndRecv").Return(&data_registry.RegisterMetricsResponse{
+					Responses: responses,
+				}, nil)
+
+				regout.On("CreateOrUpdateMetrics", mock.Anything).
+					Return(regCreateOrUpdateStreamingClientMock, nil)
+				inputMetrics := []*data_receiver.Metric{
+					{Metric: "canonical1",
+						Value:     1,
+						Timestamp: time.Now().UnixNano() / 1e6,
+						Dimensions: map[string]string{
+							"source": "sdk.zdm.test",
+							"app":    "sdktest",
+						},
+						MetadataFields: &_struct.Struct{
+							Fields: map[string]*_struct.Value{
+								"srckey": {
+									Kind: &_struct.Value_StringValue{
+										StringValue: "srcvalue",
+									},
+								},
+							},
+						},
+					},
+				}
+				compactMetrics, failedMetrics := e.ConvertMetrics(context.TODO(), inputMetrics)
+
+				Ω(failedMetrics).ShouldNot(BeNil())
+				Ω(compactMetrics).ShouldNot(BeNil())
+				Ω(len(compactMetrics)).Should(BeNumerically("==", 1))
+				Ω(len(failedMetrics)).Should(BeNumerically("==", 0))
+				// Skip bundler delay thresholds.
+				e.Flush()
 			})
 		})
 
