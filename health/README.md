@@ -1,0 +1,144 @@
+# Health Monitoring Tool
+
+Main propose of the package is to provide a tool that gives you an ability to collect and send health data and metrics for configured targets.
+
+## How to use
+
+First of all you need to import the package to your golang project.
+At the start of your program you need to configure and initialize health manager. After it you can call a health collector in any part of your program with required parameters and collect any data that you need.
+
+### Configuration
+
+You need to provide values for health manager [config](#config) and define [targets](#target) with all metrics and their types that you want to collect in future. 
+
+```go
+// define health tool configuration
+config := health.NewConfig()
+config.CollectionCycle = 60 * time.Second
+
+// define your targets
+firstTarget, err := target.New(
+    firstTargetID, true,
+    []string{someMetricID},
+    []string{someCounterID},
+    []string{someTotalCounterID},
+)
+if err != nil {
+    // handle error here
+}
+targets := []*target.Target{
+    firstTarget,
+}
+```
+
+### Initializtion
+
+You need to init a couple of important structs here and start health manager.
+At this point you should create your [destination](#destination), [writer](#writer) and [manager](#manager). After it you can add your targets to the manager and start it.
+
+```go
+// Define writer and its destination
+logDestination := writer.NewLogDestination(log.GetLogger())
+writer := writer.New(logDestination)
+
+// init health manager
+manager := health.NewManager(ctx, config, writer)
+
+// add configured targets
+manager.AddTargets(targets)
+
+// start health monitoring tool
+// after this you are safe to call collector in any part of your program
+go manager.Start(ctx)
+```
+
+### Collection
+
+After you done with inititalization you can call collector in any part of your program and collect any health data that you want. You can even send a [message](#message) per target.
+
+```go
+collector, err := health.GetCollector()
+if err != nil {
+    // handle an error here
+}
+
+// you can collect heartbeat data within configured collection cycle
+go collector.HeartBeat(firstTargetID)
+// you can store any float data as a metric info
+collector.AddMetricValue(firstTargetID, someMetricID, 35.4)
+// you can store counter data per cycle (like number of some method executions)
+collector.AddToCounter(firstTargetID, someCounterID, 3)
+// or store total counter data (like number of running goroutines)
+collector.AddToCounter(firstTargetID, someTotalCounterID, 1)
+collector.AddToCounter(firstTargetID, someTotalCounterID, -1)
+// you can even send error messages per target
+msg := target.NewMessage(
+    "Some kind of title for your message",
+    err,
+    true)
+collector.HealthMessage(firstTargetID, msg)
+// also you have a control over target health status
+collector.ChangeHealth(firstTargetID, false)
+```
+
+## Demo
+
+You can see how it works in [health/demo](https://github.com/zenoss/zenoss-go-sdk/health/demo) folder. Simply go there, run `go run .` and see a short demonstration about how can we collect different health data for bus (it is not the main purpose of the tool to collect bus health data but anyway...).
+
+## Structs and Interfaces
+
+Here is a list of all public structs and interfaces, how you can use them and what info you should/can provide as parameters
+
+### Config
+
+Config keeps configuration for whole health monitoring tool. Right now we have these avialable config parameters:
+
+* CollectionCycle - how often we should calculate and flush data to a writer. 30 seconds by default.
+* RegistrationOnCollect - whether to allow data collection for unregistered targets. Manager will register such targets automatically. Not recommended to use, it is better to explicitly define all targets. Note: in this case you cannot specify counter as a total counter.
+* LogLevel - log level will be applied to zerolog logger during manager.Start call. Available values: trace, debug, info, warn, error, fatal, panic
+
+Note: right now we don't have an ability to update Configuration after you passed it as a parameter to manager constructor.
+
+### Target
+
+Provided by health/target package. Target object keeps data about all its metrics and some additional per target configs.
+
+Target data:
+* ID
+* MetricIDs - list of float metric IDs (calculate avg value for each metric every cycle)
+* CounterIDs - list of counter IDs (resets to 0 every cycle)
+* TotalCounterIDs - list of total counter IDs (will not be reset every cycle)
+
+Target config:
+* EnableHeartbeat - whether to enable heartbeat data for this target. If false we will not take care about heartbeat data.
+
+### Destination
+
+Destination object should implment Destination interface (lives in health/writer package). It should have only one method: Push. This method takes [health object](#target-health) and sends it to the place you want. We have these available destinations:
+* LogDestination - it will simply output your health data as a log message on info level.
+
+### Writer
+
+Writer is responsible for listening of calculated health data and sending it using destination.Push method.
+You should provided intitalized destination as a parameter in writer constructor (function New). Writer interface requires only one method: Start. This method takes channel with target.Health objects as a parameter and is responsible to listen it.
+
+### Manager
+
+Manager is a heart of our tool. During Start call it is initializing all comunication channels: Collector->Manager->Writer. To be on the safe side call AddTargets method befor Start. Manager has target registry and is responsible to calculate all collected health data once per cycle and send it to writer.
+
+### Message
+
+Message struct lives in health/target package. It has these fields:
+* Summary - should describe shortly what happened with your target.
+* Error - if the error is a reason to create a message you can add it here to provide additional context.
+* AffectHealth - whether you want this message to affect your target health status and mark it as unhealthy.
+
+### Target Health
+
+Lives in health/targer package. It is a final look of target's health data. Right now it has such fields:
+* ID - targetID
+* Healthy - health status of the target
+* Heartbeat - object with two values: Enabled, Beats. Enabled shows you whether you described that you want to collect heartbeat info. Beats will be true if we received heartbeat info during last cycle.
+* Counters - map of all (default and total) counters with their values
+* Metrics - map of all metrics with their values
+* Messages - list of all messages that we collected within last cycle
