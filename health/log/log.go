@@ -25,6 +25,7 @@ func GetLogger() *zerolog.Logger {
 	return &loggerCopy
 }
 
+// SetLogLevel updates health logger log level
 func SetLogLevel(level string) {
 	once.Do(initLogger)
 	mutex.Lock()
@@ -38,6 +39,7 @@ func SetLogLevel(level string) {
 	logger = logger.Level(logLevel)
 }
 
+// SetLogger updates health logger with your own zerolog.Logger instance
 func SetLogger(log *zerolog.Logger) {
 	once.Do(initLogger)
 	mutex.Lock()

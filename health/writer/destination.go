@@ -12,23 +12,24 @@ type Destination interface {
 	Push(health *target.Health) error
 }
 
-// NewLogDestination creates a new Destination that outputs health data as a log message
-// using configured logger. Logger should be created earlier and passed as a parameter
-func NewLogDestination(logger *zerolog.Logger) *logDestination {
-	return &logDestination{log: logger}
+// NewLogDestination creates a new LogDestination instance
+// Logger should be created earlier and passed as a parameter
+func NewLogDestination(logger *zerolog.Logger) *LogDestination {
+	return &LogDestination{log: logger}
 }
 
-type logDestination struct {
-	// TODO: use zerolog instead of logrus
+// LogDestination outputs health data as a log message using configured logger
+type LogDestination struct {
 	log *zerolog.Logger
 }
 
-func (l *logDestination) Push(health *target.Health) error {
+// Push takes health data and builds a nice log message with it on info level
+func (l *LogDestination) Push(health *target.Health) error {
 	l.logTargetHealth(health)
 	return nil
 }
 
-func (l *logDestination) logTargetHealth(health *target.Health) {
+func (l *LogDestination) logTargetHealth(health *target.Health) {
 	messageSums := make([]string, len(health.Messages))
 	for i, message := range health.Messages {
 		messageSums[i] = message.Summary

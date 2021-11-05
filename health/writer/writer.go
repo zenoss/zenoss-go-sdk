@@ -10,6 +10,7 @@ import (
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 )
 
+// HealthWriter provides an ability to forward health data from manager to destination
 type HealthWriter interface {
 	// Start should be run in goroutine.
 	// It listens for healthIn channel and sends data to configured destination
