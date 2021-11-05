@@ -2,6 +2,8 @@
 
 Main propose of the package is to provide a tool that gives you an ability to collect and send health data and metrics for configured targets.
 
+Target can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the target can be simply in two states: healty or unhealthy and the health monitoring tool provides you an ability to mark your target as healthy or unhealthy in different cases. Additionaly we provide an ability to collect health related metrics. You can collect whatever you wants. For example you can collect error rate and if it is constatly hight it can also say something about target health. Abilities to collect heartbeat or error messages also in place.
+
 ## How to use
 
 First of all you need to import the package to your golang project.
