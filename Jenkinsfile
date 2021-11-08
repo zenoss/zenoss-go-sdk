@@ -1,6 +1,7 @@
 pipeline {
     agent {
         dockerfile {
+            label 'master'
             args '-v /tmp/tools:/tmp/tools'
         }
     }
