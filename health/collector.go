@@ -25,7 +25,7 @@ type Collector interface {
 	HealthMessage(targetID string, msg *target.Message) error
 	// ChangeHealth marks your target as healthy (true) or unhealthy (false). Target health will not
 	// be restored by itself, you need to call this method if you want to restore healthy status
-	ChangeHealth(targetID string, healthStatus bool) error
+	ChangeHealth(targetID string, healthStatus target.HealthStatus) error
 }
 
 func initCollector(cycleDuration time.Duration, metricsIn chan<- *targetMeasurement) {
@@ -113,7 +113,7 @@ func (hc *healthCollector) HealthMessage(targetID string, msg *target.Message) e
 	return nil
 }
 
-func (hc *healthCollector) ChangeHealth(targetID string, status bool) error {
+func (hc *healthCollector) ChangeHealth(targetID string, status target.HealthStatus) error {
 	if !hc.isRunning {
 		return errDeadCollector
 	}

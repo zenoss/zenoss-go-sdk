@@ -9,7 +9,7 @@ import (
 func newRawHealth(target *t.Target, metricIDs []string) *rawHealth {
 	tHealth := &rawHealth{
 		target:        target,
-		healthy:       true,
+		status:        t.Healthy,
 		heartBeat:     false,
 		counters:      make(map[string]int32),
 		totalCounters: make(map[string]int32),
@@ -25,7 +25,7 @@ func newRawHealth(target *t.Target, metricIDs []string) *rawHealth {
 // rawHealth is a struct that keeps target information together with raw target health
 type rawHealth struct {
 	target        *t.Target
-	healthy       bool
+	status        t.HealthStatus
 	heartBeat     bool
 	counters      map[string]int32
 	totalCounters map[string]int32
@@ -97,7 +97,7 @@ type targetMeasurement struct {
 	measureType measureType
 
 	// actual measurement fields
-	healthStatus  bool
+	healthStatus  t.HealthStatus
 	message       *t.Message
 	counterChange int32
 	metricValue   float64

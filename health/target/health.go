@@ -12,10 +12,22 @@ func NewHealth(id string) *Health {
 	}
 }
 
+type HealthStatus int
+
+const (
+	Healthy HealthStatus = iota
+	Degrade
+	Unhealthy
+)
+
+func (hs HealthStatus) String() string {
+	return [...]string{"Healthy", "Degrade", "Unhealthy"}[hs]
+}
+
 // Health is a ready to send object that keeps all calculated health data during last cycle
 type Health struct {
 	ID        string
-	Healthy   bool
+	Status    HealthStatus
 	Heartbeat *HeartBeat
 	Counters  map[string]int32
 	Metrics   map[string]float64

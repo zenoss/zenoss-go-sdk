@@ -1,8 +1,8 @@
-# Health Monitoring Tool
+# Health Monitoring Framework
 
-Main propose of the package is to provide a tool that gives you an ability to collect and send health data and metrics for configured targets.
+Main purpose of the package is to provide a framework that gives you an ability to collect and send health data and metrics for configured targets.
 
-Target can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the target can be simply in two states: healty or unhealthy and the health monitoring tool provides you an ability to mark your target as healthy or unhealthy in different cases. Additionaly we provide an ability to collect health related metrics. You can collect whatever you wants. For example you can collect error rate and if it is constatly hight it can also say something about target health. Abilities to collect heartbeat or error messages also in place.
+Target can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the target can be simply in two states: healty or unhealthy and the health monitoring framework provides you an ability to mark your target as healthy or unhealthy in different cases. Additionaly we provide an ability to collect health related metrics. You can collect whatever you wants. For example you can collect error rate and if it is constatly hight it can also say something about target health. Abilities to collect heartbeat or error messages also in place.
 
 ## How to use
 
@@ -14,7 +14,7 @@ At the start of your program you need to configure and initialize health manager
 You need to provide values for health manager [config](#config) and define [targets](#target) with all metrics and their types that you want to collect in future. 
 
 ```go
-// define health tool configuration
+// define health monitoring configuration
 config := health.NewConfig()
 config.CollectionCycle = 60 * time.Second
 
@@ -49,7 +49,7 @@ manager := health.NewManager(ctx, config, writer)
 // add configured targets
 manager.AddTargets(targets)
 
-// start health monitoring tool
+// start health monitoring
 // after this you are safe to call collector in any part of your program
 go manager.Start(ctx)
 ```
@@ -85,7 +85,7 @@ collector.ChangeHealth(firstTargetID, false)
 
 ## Demo
 
-You can see how it works in [health/demo](https://github.com/zenoss/zenoss-go-sdk/health/demo) folder. Simply go there, run `go run .` and see a short demonstration about how can we collect different health data for bus (it is not the main purpose of the tool to collect bus health data but anyway...).
+You can see how it works in [health/demo](https://github.com/zenoss/zenoss-go-sdk/health/demo) folder. Simply go there, run `go run .` and see a short demonstration about how can we collect different health data for bus (it is not the main purpose of the framework to collect bus health data but anyway...).
 
 ## Structs and Interfaces
 
@@ -93,7 +93,7 @@ Here is a list of all public structs and interfaces, how you can use them and wh
 
 ### Config
 
-Config keeps configuration for whole health monitoring tool. Right now we have these avialable config parameters:
+Config keeps configuration for whole framework instance. Right now we have these avialable config parameters:
 
 * CollectionCycle - how often we should calculate and flush data to a writer. 30 seconds by default.
 * RegistrationOnCollect - whether to allow data collection for unregistered targets. Manager will register such targets automatically. Not recommended to use, it is better to explicitly define all targets. Note: in this case you cannot specify counter as a total counter.
@@ -126,7 +126,7 @@ You should provided intitalized destination as a parameter in writer constructor
 
 ### Manager
 
-Manager is a heart of our tool. During Start call it is initializing all comunication channels: Collector->Manager->Writer. To be on the safe side call AddTargets method befor Start. Manager has target registry and is responsible to calculate all collected health data once per cycle and send it to writer.
+Manager is a heart of our framework. During Start call it is initializing all comunication channels: Collector->Manager->Writer. To be on the safe side call AddTargets method befor Start. Manager has target registry and is responsible to calculate all collected health data once per cycle and send it to writer.
 
 ### Message
 

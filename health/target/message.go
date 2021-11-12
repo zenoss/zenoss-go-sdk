@@ -8,9 +8,10 @@ type Message struct {
 	Error   error
 
 	AffectHealth bool
+	HealthStatus HealthStatus
 }
 
 // NewMessage is just a constructor for target.Message
-func NewMessage(summary string, err error, affectHealth bool) *Message {
-	return &Message{Summary: summary, Error: err, AffectHealth: affectHealth}
+func NewMessage(summary string, err error, affectHealth bool, healthStatus HealthStatus) *Message {
+	return &Message{Summary: summary, Error: err, AffectHealth: affectHealth, HealthStatus: healthStatus}
 }

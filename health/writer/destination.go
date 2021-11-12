@@ -37,14 +37,14 @@ func (l *LogDestination) logTargetHealth(health *target.Health) {
 
 	if health.Heartbeat.Enabled {
 		l.log.Info().Msgf(
-			"TargetID: %s, Healthy=%t, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
-			health.ID, health.Healthy, health.Heartbeat.Beats, health.Counters,
+			"TargetID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
+			health.ID, health.Status, health.Heartbeat.Beats, health.Counters,
 			health.Metrics, messageSums,
 		)
 	} else {
 		l.log.Info().Msgf(
-			"TargetID: %s, Healthy=%t, Counters=%v, Metrics=%v, Messages=%v",
-			health.ID, health.Healthy, health.Counters, health.Metrics, messageSums,
+			"TargetID: %s, Status=%v, Counters=%v, Metrics=%v, Messages=%v",
+			health.ID, health.Status, health.Counters, health.Metrics, messageSums,
 		)
 	}
 }

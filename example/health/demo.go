@@ -43,7 +43,7 @@ func main() {
 
 	// Define writer and its destination
 	logDestination := writer.NewLogDestination(log.GetLogger())
-	writer := writer.New(logDestination)
+	writer := writer.New([]writer.Destination{logDestination})
 
 	// init health manager
 	manager := health.NewManager(ctx, config, writer)
@@ -101,7 +101,7 @@ func bus(wg *sync.WaitGroup) {
 	msg := target.NewMessage(
 		"The engine stalled",
 		errors.New("engine stopped working"),
-		true)
+		true, target.Unhealthy)
 	collector.HealthMessage(mercedesTarget, msg)
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 0)
 
@@ -113,7 +113,7 @@ func bus(wg *sync.WaitGroup) {
 	time.Sleep(sleeps)
 	log.Info().Msg("Congrats, we repaired an engine, we can mark as healthy again")
 
-	collector.ChangeHealth(mercedesTarget, true)
+	collector.ChangeHealth(mercedesTarget, target.Healthy)
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 5.0)
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 25.0)
 

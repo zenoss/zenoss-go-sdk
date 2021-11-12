@@ -123,11 +123,11 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 		}
 	case message:
 		if measure.message.AffectHealth {
-			targetHealth.healthy = false
+			targetHealth.status = measure.message.HealthStatus
 		}
 		targetHealth.messages = append(targetHealth.messages, measure.message)
 	case healthStatus:
-		targetHealth.healthy = measure.healthStatus
+		targetHealth.status = measure.healthStatus
 	}
 
 	debugTargetMeasure(measure)
@@ -224,7 +224,7 @@ func (hm *healthManager) writeHealthResult(healthIn chan<- *target.Health) {
 
 func (hm *healthManager) calculateTargetHealth(rawHealth *rawHealth) *target.Health {
 	health := target.NewHealth(rawHealth.target.ID)
-	health.Healthy = rawHealth.healthy
+	health.Status = rawHealth.status
 	health.Heartbeat.Enabled = rawHealth.target.EnableHeartbeat
 	health.Heartbeat.Beats = rawHealth.heartBeat
 	health.Messages = rawHealth.messages
@@ -273,18 +273,14 @@ func debugTargetMeasure(measure *targetMeasurement) {
 			measure.measureID, measure.counterChange, measure.targetID)
 	case message:
 		if measure.message.AffectHealth {
-			log.Debug().Msgf("Got message that affects health from %s target: msg=%s, error.msg=%s",
-				measure.measureID, measure.message.Summary, measure.message.Summary)
+			log.Debug().Msgf("Got message that affects health from %s target: status=%s, msg=%s, error.msg=%s",
+				measure.measureID, measure.message.HealthStatus, measure.message.Summary, measure.message.Error)
 		} else {
-			log.Debug().Msgf("Got message that don't affects health from %s target: msg=%s, error.msg=%s",
-				measure.measureID, measure.message.Summary, measure.message.Summary)
+			log.Debug().Msgf("Got message that doesn't affect health from %s target: msg=%s, error.msg=%s",
+				measure.measureID, measure.message.Summary, measure.message.Error)
 		}
 	case healthStatus:
-		if measure.healthStatus {
-			log.Debug().Msgf("Got health status update from %s target. Healthy", measure.targetID)
-		} else {
-			log.Debug().Msgf("Got health status update from %s target. Not healthy", measure.targetID)
-		}
+		log.Debug().Msgf("Got health status update from %s target. %s", measure.targetID, measure.healthStatus)
 	}
 }
 
@@ -296,8 +292,8 @@ func debugRawHealthStats(rawHealth *rawHealth) {
 	}
 
 	log.Debug().Msgf(
-		"TargetID: %s, Healthy=%t, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
-		rawHealth.target.ID, rawHealth.healthy, rawHealth.heartBeat, rawHealth.counters,
+		"TargetID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
+		rawHealth.target.ID, rawHealth.status, rawHealth.heartBeat, rawHealth.counters,
 		rawHealth.rawMetrics, messageSums,
 	)
 }
