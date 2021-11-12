@@ -5,6 +5,7 @@ func NewHealth(id string) *Health {
 	return &Health{
 		ID: id,
 
+		Status:    Healthy,
 		Heartbeat: &HeartBeat{},
 		Counters:  make(map[string]int32),
 		Metrics:   make(map[string]float64),
