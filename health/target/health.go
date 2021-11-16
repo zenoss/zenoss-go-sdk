@@ -19,10 +19,8 @@ type HealthStatus int
 const (
 	// Healthy is the default status
 	Healthy HealthStatus = iota
-
 	// Degrade describes a scenario where the component is impaired but not out
 	Degrade
-
 	// Unhealthy is out of order component status
 	Unhealthy
 )

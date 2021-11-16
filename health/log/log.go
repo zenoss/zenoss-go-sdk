@@ -33,7 +33,7 @@ func SetLogLevel(level string) {
 
 	logLevel, err := zerolog.ParseLevel(strings.ToLower(level))
 	if err != nil {
-		GetLogger().Error().Msgf("Invalid log level: %s", level)
+		logger.Error().Msgf("Invalid log level: %s", level)
 		return
 	}
 	logger = logger.Level(logLevel)

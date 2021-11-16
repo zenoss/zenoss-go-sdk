@@ -35,7 +35,7 @@ var _ = Describe("Target Constructor", func() {
 		metricIDs = append(metricIDs, mockStr)
 		target, err := target.New(id, true, metricIDs, counterIDs, tCounterIDs)
 		Ω(target).Should(BeNil())
-		Ω(err).ShouldNot(BeNil()) // TODO: check for exact error
+		Ω(err.Error()).Should(Equal("Some metric or counter ID is not unique"))
 	})
 
 	It("should return a new Target", func() {

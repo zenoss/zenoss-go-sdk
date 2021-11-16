@@ -30,7 +30,7 @@ pipeline {
         stage('Tests') {
             steps {
                 ansiColor('xterm') {
-                    sh 'make test'
+                    sh 'make clean test'
                 }
             }
         }

@@ -27,3 +27,12 @@ var _ = Describe("Target's Health Constructor", func() {
 		Ω(health).ShouldNot(BeNil())
 	})
 })
+
+var _ = Describe("HealthStatus enum", func() {
+	It("should return correct string value", func() {
+		healthy, degrade, unhealthy := target.Healthy, target.Degrade, target.Unhealthy
+		Ω(healthy.String()).Should(Equal("Healthy"))
+		Ω(degrade.String()).Should(Equal("Degrade"))
+		Ω(unhealthy.String()).Should(Equal("Unhealthy"))
+	})
+})
