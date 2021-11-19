@@ -26,7 +26,9 @@ import (
 
 // FrameworkStart initializes dependencies and starts health monitoring
 func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) {
-	logging.SetLogLevel(cfg.LogLevel)
+	if cfg.LogLevel != "" {
+		logging.SetLogLevel(cfg.LogLevel)
+	}
 
 	measurementsCh := make(chan *targetMeasurement)
 	healthCh := make(chan *target.Health)
