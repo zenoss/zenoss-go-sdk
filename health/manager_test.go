@@ -3,6 +3,7 @@ package health_test
 import (
 	"context"
 	"errors"
+
 	"math/rand"
 	"testing"
 	"time"
@@ -11,8 +12,8 @@ import (
 	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
-
 	"github.com/zenoss/zenoss-go-sdk/health"
+	e "github.com/zenoss/zenoss-go-sdk/health/errors"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 	"github.com/zenoss/zenoss-go-sdk/health/writer/mocks"
@@ -28,6 +29,9 @@ func TestHealth(t *testing.T) {
 var _ = Describe("Manager", func() {
 
 	var (
+		err       error
+		ctx       context.Context
+		cancel    context.CancelFunc
 		config    *health.Config
 		targets   []*target.Target
 		dest      *mocks.Destination
@@ -50,37 +54,26 @@ var _ = Describe("Manager", func() {
 		cycle = 200 * time.Millisecond
 	)
 
-	BeforeEach(func() {
-		config = health.NewConfig()
-		config.CollectionCycle = cycle
-
-		dest = &mocks.Destination{}
-		dest.On("Push", mock.Anything).Return(nil)
-
-		wr = writer.New([]writer.Destination{dest})
-	})
-
 	Context("When collector is not initialized", func() {
 		It("GetCollector should return an error", func() {
-			expectedError := errors.New("Health Collector is not initialized yet")
-
 			collector, err := health.GetCollector()
 
 			Ω(collector).Should(BeNil())
-			Ω(err).Should(Equal(expectedError))
+			Ω(err).Should(Equal(e.ErrDeadCollector))
 		})
 	})
 
 	Context("Manager tests", func() {
-		var (
-			err    error
-			ctx    context.Context
-			cancel context.CancelFunc
-		)
-
 		BeforeEach(func() {
 			ctx, cancel = context.WithCancel(context.Background())
 
+			config = health.NewConfig()
+			config.CollectionCycle = cycle
+
+			dest = &mocks.Destination{}
+			dest.On("Push", mock.Anything).Return(nil)
+
+			wr = writer.New([]writer.Destination{dest})
 			tar, _ := target.New(
 				testTargetID, true,
 				[]string{testMetric1, testMetric2},
@@ -235,22 +228,31 @@ var _ = Describe("Manager", func() {
 
 				Ω(err).Should(BeNil())
 				Ω(targetId).ShouldNot(Equal(wrongID))
+
 				cancel()
 			})
 		})
 	})
 
 	Context("Manager with registration on collect enabled test", func() {
-		var (
-			err    error
-			ctx    context.Context
-			cancel context.CancelFunc
-		)
-
 		BeforeEach(func() {
 			ctx, cancel = context.WithCancel(context.Background())
 
+			config = health.NewConfig()
+			config.CollectionCycle = cycle
 			config.RegistrationOnCollect = true
+
+			dest = &mocks.Destination{}
+			dest.On("Push", mock.Anything).Return(nil)
+
+			wr = writer.New([]writer.Destination{dest})
+			tar, _ := target.New(
+				testTargetID, true,
+				[]string{testMetric1, testMetric2},
+				[]string{testCounter1, testCounter2},
+				[]string{totalCounter},
+			)
+			targets = []*target.Target{tar}
 
 			manager := health.NewManager(ctx, config, wr)
 			manager.AddTargets(targets)
@@ -347,14 +349,24 @@ var _ = Describe("Manager", func() {
 	})
 
 	Context("Dead collector test", func() {
-		var (
-			err    error
-			ctx    context.Context
-			cancel context.CancelFunc
-		)
-
 		BeforeEach(func() {
 			ctx, cancel = context.WithCancel(context.Background())
+
+			config = health.NewConfig()
+			config.CollectionCycle = cycle
+			config.RegistrationOnCollect = true
+
+			dest = &mocks.Destination{}
+			dest.On("Push", mock.Anything).Return(nil)
+
+			wr = writer.New([]writer.Destination{dest})
+			tar, _ := target.New(
+				testTargetID, true,
+				[]string{testMetric1, testMetric2},
+				[]string{testCounter1, testCounter2},
+				[]string{totalCounter},
+			)
+			targets = []*target.Target{tar}
 
 			manager := health.NewManager(ctx, config, wr)
 			go manager.Start(ctx)

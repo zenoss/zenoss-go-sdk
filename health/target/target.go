@@ -3,8 +3,7 @@
 package target
 
 import (
-	"errors"
-
+	"github.com/zenoss/zenoss-go-sdk/health/errors"
 	"github.com/zenoss/zenoss-go-sdk/utils"
 )
 
@@ -23,7 +22,7 @@ func New(
 		set[val] = struct{}{}
 	}
 	if len(set) < len(metricIDs)+len(counterIDs)+len(totalCounterIDs) {
-		return nil, errors.New("Some metric or counter ID is not unique")
+		return nil, errors.ErrMeasureIDTaken
 	}
 	return &Target{
 		ID:              id,

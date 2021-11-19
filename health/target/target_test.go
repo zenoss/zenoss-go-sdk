@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
+	"github.com/zenoss/zenoss-go-sdk/health/errors"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 )
 
@@ -35,7 +36,7 @@ var _ = Describe("Target Constructor", func() {
 		metricIDs = append(metricIDs, mockStr)
 		target, err := target.New(id, true, metricIDs, counterIDs, tCounterIDs)
 		Ω(target).Should(BeNil())
-		Ω(err.Error()).Should(Equal("Some metric or counter ID is not unique"))
+		Ω(err).Should(Equal(errors.ErrMeasureIDTaken))
 	})
 
 	It("should return a new Target", func() {

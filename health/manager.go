@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/zenoss/zenoss-go-sdk/health/errors"
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	w "github.com/zenoss/zenoss-go-sdk/health/writer"
@@ -100,7 +101,7 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 	targetHealth, ok := hm.registry.getRawHealthForTarget(measure.targetID)
 	if !ok {
 		if !hm.config.RegistrationOnCollect {
-			return errTargetNotRegistered
+			return errors.ErrTargetNotRegistered
 		}
 		targetHealth, err = hm.buildTargetFromMeasure(measure)
 		if err != nil {
@@ -137,10 +138,10 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 func (hm *healthManager) updateTargetsMetric(tHealth *rawHealth, measure *targetMeasurement) error {
 	if !utils.ListContainsString(tHealth.target.MetricIDs, measure.measureID) {
 		if !hm.config.RegistrationOnCollect {
-			return errMetricNotRegistered
+			return errors.ErrMetricNotRegistered
 		}
 		if !tHealth.target.IsMeasureIDUnique(measure.measureID) {
-			return errMeasureIDTaken
+			return errors.ErrMeasureIDTaken
 		}
 		tHealth.target.MetricIDs = append(tHealth.target.MetricIDs, measure.measureID)
 		tHealth.rawMetrics[measure.measureID] = []float64{measure.metricValue}
@@ -159,10 +160,10 @@ func (hm *healthManager) updateTargetsCounter(tHealth *rawHealth, measure *targe
 	} else {
 		if !utils.ListContainsString(tHealth.target.CounterIDs, measure.measureID) {
 			if !hm.config.RegistrationOnCollect {
-				return errCounterNotRegistered
+				return errors.ErrCounterNotRegistered
 			}
 			if !tHealth.target.IsMeasureIDUnique(measure.measureID) {
-				return errMeasureIDTaken
+				return errors.ErrMeasureIDTaken
 			}
 			tHealth.target.CounterIDs = append(tHealth.target.CounterIDs, measure.measureID)
 		}
