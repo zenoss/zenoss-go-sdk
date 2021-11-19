@@ -91,6 +91,11 @@ var _ = Describe("Manager", func() {
 			time.Sleep(cycle)
 		})
 
+		AfterEach(func() {
+			cancel()
+			time.Sleep(1 * time.Second)
+		})
+
 		It("collector should be not nil", func() {
 			Ω(collector).ShouldNot(BeNil())
 		})
@@ -228,8 +233,6 @@ var _ = Describe("Manager", func() {
 
 				Ω(err).Should(BeNil())
 				Ω(targetId).ShouldNot(Equal(wrongID))
-
-				cancel()
 			})
 		})
 	})
@@ -274,6 +277,11 @@ var _ = Describe("Manager", func() {
 
 			collector, err = health.GetCollector()
 			time.Sleep(cycle)
+		})
+
+		AfterEach(func() {
+			cancel()
+			time.Sleep(1 * time.Second)
 		})
 
 		Context("Dynamic measure ID registration test", func() {
@@ -355,8 +363,6 @@ var _ = Describe("Manager", func() {
 				err = collector.AddMetricValue(newTargetID, newMeasureID, metricValue)
 
 				Ω(err).Should(BeNil())
-
-				cancel()
 			})
 		})
 	})
@@ -399,11 +405,12 @@ var _ = Describe("Manager", func() {
 
 			collector, err = health.GetCollector()
 			time.Sleep(cycle)
-
-			cancel()
 		})
 
 		It("dead collector calls should return an error", func() {
+			cancel()
+			time.Sleep(1 * time.Second)
+
 			errDeadCollector := errors.New("Collector is not running")
 
 			err = collector.HeartBeat(testTargetID)
