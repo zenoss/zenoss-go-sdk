@@ -28,6 +28,7 @@ type Collector interface {
 	ChangeHealth(targetID string, healthStatus target.HealthStatus) error
 }
 
+// InitCollector initializes collector with a given cycle duration
 func InitCollector(cycleDuration time.Duration, metricsIn chan<- *targetMeasurement) {
 	collector = &healthCollector{
 		cycleDuration: cycleDuration,
@@ -36,6 +37,7 @@ func InitCollector(cycleDuration time.Duration, metricsIn chan<- *targetMeasurem
 	}
 }
 
+// ShutDownCollector turns off collector and closes input channel
 func ShutDownCollector() {
 	collector.isRunning = false
 	close(collector.metricsIn)

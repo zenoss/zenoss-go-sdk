@@ -3,13 +3,17 @@ package errors
 import "errors"
 
 var (
-	// Collector errors
+	// ErrDeadCollector defines not initialized or dead collector error
 	ErrDeadCollector = errors.New("Collector is not running")
 
-	// Manager errors
-	ErrTargetNotRegistered  = errors.New("Target is not registered")
-	ErrMetricNotRegistered  = errors.New("Metric is not registered on target")
+	// ErrTargetNotRegistered defines unknown monitoring target ID error
+	ErrTargetNotRegistered = errors.New("Target is not registered")
+	// ErrMetricNotRegistered defines unknown metric ID error
+	ErrMetricNotRegistered = errors.New("Metric is not registered on target")
+	// ErrCounterNotRegistered defines unknown counter ID error
 	ErrCounterNotRegistered = errors.New("Counter is not registered on target")
-	ErrMeasureIDTaken       = errors.New("Measure with such ID already exist")
-	ErrManagerNotStarted    = errors.New("Health manager is not started")
+	// ErrMeasureIDTaken defines measure ID already exists error
+	ErrMeasureIDTaken = errors.New("Measure with such ID already exist")
+	// ErrManagerNotStarted defines not initialized manager error
+	ErrManagerNotStarted = errors.New("Health manager is not started")
 )

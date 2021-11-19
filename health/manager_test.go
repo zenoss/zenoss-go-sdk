@@ -28,18 +28,6 @@ func TestHealth(t *testing.T) {
 
 var _ = Describe("Manager", func() {
 
-	var (
-		err       error
-		ctx       context.Context
-		cancel    context.CancelFunc
-		config    *health.Config
-		targets   []*target.Target
-		dest      *mocks.Destination
-		wr        writer.HealthWriter
-		manager   health.Manager
-		collector health.Collector
-	)
-
 	const (
 		testTargetID = "test.target"
 
@@ -64,6 +52,18 @@ var _ = Describe("Manager", func() {
 	})
 
 	Context("Manager tests", func() {
+		var (
+			err       error
+			ctx       context.Context
+			cancel    context.CancelFunc
+			config    *health.Config
+			targets   []*target.Target
+			dest      *mocks.Destination
+			wr        writer.HealthWriter
+			manager   health.Manager
+			collector health.Collector
+		)
+
 		BeforeEach(func() {
 			ctx, cancel = context.WithCancel(context.Background())
 
@@ -84,7 +84,7 @@ var _ = Describe("Manager", func() {
 
 			manager = health.NewManager(ctx, config)
 			manager.AddTargets(targets)
-			go health.HealthFrameworkStart(ctx, config, manager, wr)
+			go health.FrameworkStart(ctx, config, manager, wr)
 			time.Sleep(cycle / 2)
 
 			collector, err = health.GetCollector()
@@ -104,7 +104,7 @@ var _ = Describe("Manager", func() {
 				heartbeat := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Heartbeat
 
 				Ω(err).Should(BeNil())
-				Ω(len(dest.Calls)).Should(Equal(4))
+				Ω(len(dest.Calls) > 2).Should(BeTrue())
 				Ω(heartbeat.Enabled).Should(BeTrue())
 				Ω(heartbeat.Beats).Should(BeTrue())
 			})
@@ -235,6 +235,17 @@ var _ = Describe("Manager", func() {
 	})
 
 	Context("Manager with registration on collect enabled test", func() {
+		var (
+			err       error
+			ctx       context.Context
+			cancel    context.CancelFunc
+			config    *health.Config
+			targets   []*target.Target
+			dest      *mocks.Destination
+			wr        writer.HealthWriter
+			collector health.Collector
+		)
+
 		BeforeEach(func() {
 			ctx, cancel = context.WithCancel(context.Background())
 
@@ -258,7 +269,7 @@ var _ = Describe("Manager", func() {
 
 			manager.AddTargets(targets)
 
-			go health.HealthFrameworkStart(ctx, config, manager, wr)
+			go health.FrameworkStart(ctx, config, manager, wr)
 			time.Sleep(cycle / 2) // let it init and start
 
 			collector, err = health.GetCollector()
@@ -351,6 +362,17 @@ var _ = Describe("Manager", func() {
 	})
 
 	Context("Dead collector test", func() {
+		var (
+			err       error
+			ctx       context.Context
+			cancel    context.CancelFunc
+			config    *health.Config
+			targets   []*target.Target
+			dest      *mocks.Destination
+			wr        writer.HealthWriter
+			collector health.Collector
+		)
+
 		BeforeEach(func() {
 			ctx, cancel = context.WithCancel(context.Background())
 
@@ -371,7 +393,8 @@ var _ = Describe("Manager", func() {
 			targets = []*target.Target{tar}
 
 			manager := health.NewManager(ctx, config)
-			go health.HealthFrameworkStart(ctx, config, manager, wr)
+			manager.AddTargets(targets)
+			go health.FrameworkStart(ctx, config, manager, wr)
 			time.Sleep(cycle / 2) // let it init and start
 
 			collector, err = health.GetCollector()

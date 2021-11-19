@@ -24,7 +24,8 @@ import (
 	"github.com/zenoss/zenoss-go-sdk/utils"
 )
 
-func HealthFrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) {
+// FrameworkStart initializes dependencies and starts health monitoring
+func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) {
 	logging.SetLogLevel(cfg.LogLevel)
 
 	measurementsCh := make(chan *targetMeasurement)

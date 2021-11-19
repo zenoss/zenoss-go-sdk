@@ -51,7 +51,7 @@ func main() {
 
 	// start health monitoring framework
 	// after this you are safe to call collector in any part of your program
-	go health.HealthFrameworkStart(ctx, config, manager, writer)
+	go health.FrameworkStart(ctx, config, manager, writer)
 
 	time.Sleep(1 * time.Second)
 
