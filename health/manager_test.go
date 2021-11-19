@@ -82,9 +82,9 @@ var _ = Describe("Manager", func() {
 			)
 			targets = []*target.Target{tar}
 
-			manager = health.NewManager(ctx, config, wr)
+			manager = health.NewManager(ctx, config)
 			manager.AddTargets(targets)
-			go manager.Start(ctx)
+			go health.HealthFrameworkStart(ctx, config, manager, wr)
 			time.Sleep(cycle / 2)
 
 			collector, err = health.GetCollector()
@@ -254,10 +254,12 @@ var _ = Describe("Manager", func() {
 			)
 			targets = []*target.Target{tar}
 
-			manager := health.NewManager(ctx, config, wr)
+			manager := health.NewManager(ctx, config)
+
 			manager.AddTargets(targets)
-			go manager.Start(ctx)
-			time.Sleep(cycle / 2)
+
+			go health.HealthFrameworkStart(ctx, config, manager, wr)
+			time.Sleep(cycle / 2) // let it init and start
 
 			collector, err = health.GetCollector()
 			time.Sleep(cycle)
@@ -368,9 +370,9 @@ var _ = Describe("Manager", func() {
 			)
 			targets = []*target.Target{tar}
 
-			manager := health.NewManager(ctx, config, wr)
-			go manager.Start(ctx)
-			time.Sleep(cycle / 2)
+			manager := health.NewManager(ctx, config)
+			go health.HealthFrameworkStart(ctx, config, manager, wr)
+			time.Sleep(cycle / 2) // let it init and start
 
 			collector, err = health.GetCollector()
 			time.Sleep(cycle)

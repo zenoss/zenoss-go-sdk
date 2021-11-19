@@ -11,4 +11,5 @@ var (
 	ErrMetricNotRegistered  = errors.New("Metric is not registered on target")
 	ErrCounterNotRegistered = errors.New("Counter is not registered on target")
 	ErrMeasureIDTaken       = errors.New("Measure with such ID already exist")
+	ErrManagerNotStarted    = errors.New("Health manager is not started")
 )

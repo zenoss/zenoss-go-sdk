@@ -46,13 +46,12 @@ func main() {
 	writer := writer.New([]writer.Destination{logDestination})
 
 	// init health manager
-	manager := health.NewManager(ctx, config, writer)
-
+	manager := health.NewManager(ctx, config)
 	manager.AddTargets(targets)
 
-	// start health monitoring tool
+	// start health monitoring framework
 	// after this you are safe to call collector in any part of your program
-	go manager.Start(ctx)
+	go health.HealthFrameworkStart(ctx, config, manager, writer)
 
 	time.Sleep(1 * time.Second)
 

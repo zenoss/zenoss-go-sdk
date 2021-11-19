@@ -28,7 +28,7 @@ type Collector interface {
 	ChangeHealth(targetID string, healthStatus target.HealthStatus) error
 }
 
-func initCollector(cycleDuration time.Duration, metricsIn chan<- *targetMeasurement) {
+func InitCollector(cycleDuration time.Duration, metricsIn chan<- *targetMeasurement) {
 	collector = &healthCollector{
 		cycleDuration: cycleDuration,
 		metricsIn:     metricsIn,
@@ -36,7 +36,7 @@ func initCollector(cycleDuration time.Duration, metricsIn chan<- *targetMeasurem
 	}
 }
 
-func shutDownCollector() {
+func ShutDownCollector() {
 	collector.isRunning = false
 	close(collector.metricsIn)
 }

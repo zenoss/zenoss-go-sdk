@@ -24,25 +24,40 @@ import (
 	"github.com/zenoss/zenoss-go-sdk/utils"
 )
 
+func HealthFrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) {
+	logging.SetLogLevel(cfg.LogLevel)
+
+	measurementsCh := make(chan *targetMeasurement)
+	healthCh := make(chan *target.Health)
+
+	InitCollector(cfg.CollectionCycle, measurementsCh)
+
+	go m.Start(ctx, measurementsCh, healthCh)
+
+	go writer.Start(healthCh)
+}
+
 // Manager keeps all information about targets and provides a functionality
 // to initialize collector, writer and communication channels
 type Manager interface {
 	// Start method should initialize collector with it's configuration and
 	// define a method to send data to a writer
-	Start(ctx context.Context)
+	Start(ctx context.Context, measureOut <-chan *targetMeasurement, healthIn chan<- *target.Health)
 	// AddTargets provides a simple interface to register monitored targets
 	AddTargets(targets []*target.Target)
+	// FlushData calculates and writes all data that we have collected for last cycle to the writer
+	// It triggers automaticaly once per collection cycle but you can also trigger it manually
+	FlushData() error
 }
 
 // NewManager creates a new Manager instance with internal target registry.
 // You should init configuration and writer before and pass it here
-func NewManager(ctx context.Context, config *Config, writer w.HealthWriter) Manager {
+func NewManager(ctx context.Context, config *Config) Manager {
 	healthReg := newHealthRegistry()
 
 	return &healthManager{
 		registry: healthReg,
 		config:   config,
-		writer:   writer,
 	}
 }
 
@@ -50,18 +65,18 @@ func NewManager(ctx context.Context, config *Config, writer w.HealthWriter) Mana
 type healthManager struct {
 	registry healthRegistry
 	config   *Config
-	writer   w.HealthWriter
+	healthIn chan<- *target.Health
+	started  bool
 }
 
-func (hm *healthManager) Start(ctx context.Context) {
-	logging.SetLogLevel(hm.config.LogLevel)
-	measurements := make(chan *targetMeasurement)
-	initCollector(hm.config.CollectionCycle, measurements)
-	go hm.listenMeasurements(ctx, measurements)
+func (hm *healthManager) Start(
+	ctx context.Context, measureOut <-chan *targetMeasurement, healthIn chan<- *target.Health,
+) {
+	hm.healthIn = healthIn
+	go hm.listenMeasurements(ctx, measureOut)
 
-	healthIn := make(chan *target.Health)
 	go hm.healthForwarder(ctx, healthIn)
-	go hm.writer.Start(healthIn)
+	hm.started = true
 }
 
 func (hm *healthManager) AddTargets(targets []*target.Target) {
@@ -86,7 +101,7 @@ func (hm *healthManager) listenMeasurements(ctx context.Context, measurements <-
 				log.Error().AnErr("error", err).Msgf("Unable to update target with id %s", measurement.targetID)
 			}
 		case <-ctx.Done():
-			shutDownCollector()
+			ShutDownCollector()
 			return
 		}
 	}
@@ -190,6 +205,14 @@ func (hm *healthManager) buildTargetFromMeasure(measure *targetMeasurement) (*ra
 		return nil, err
 	}
 	return newRawHealth(target, metricIDs), nil
+}
+
+func (hm *healthManager) FlushData() error {
+	if !hm.started {
+		return errors.ErrManagerNotStarted
+	}
+	hm.writeHealthResult(hm.healthIn)
+	return nil
 }
 
 // Calculates raw health data from the registry and forwards all health data to the writer once per cycle
