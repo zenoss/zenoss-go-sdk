@@ -3,7 +3,6 @@ package health_test
 import (
 	"context"
 	"errors"
-
 	"math/rand"
 	"testing"
 	"time"
@@ -69,6 +68,7 @@ var _ = Describe("Manager", func() {
 
 			config = health.NewConfig()
 			config.CollectionCycle = cycle
+			config.LogLevel = "Debug"
 
 			dest = &mocks.Destination{}
 			dest.On("Push", mock.Anything).Return(nil)
@@ -106,12 +106,14 @@ var _ = Describe("Manager", func() {
 					err = collector.HeartBeat(testTargetID)
 				}()
 				time.Sleep(3 * cycle)
-				heartbeat := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Heartbeat
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 
 				Ω(err).Should(BeNil())
 				Ω(len(dest.Calls) > 2).Should(BeTrue())
-				Ω(heartbeat.Enabled).Should(BeTrue())
-				Ω(heartbeat.Beats).Should(BeTrue())
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Heartbeat.Enabled).Should(BeTrue())
+				Ω(lastPush.Heartbeat.Beats).Should(BeTrue())
 			})
 		})
 
@@ -122,23 +124,26 @@ var _ = Describe("Manager", func() {
 				counterIncr = 1
 				err = collector.AddToCounter(testTargetID, testCounter1, counterIncr)
 				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Counters
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 				Ω(err).Should(BeNil())
-				Ω(pushed[testCounter1]).Should(Equal(counterIncr))
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Counters[testCounter1]).Should(Equal(counterIncr))
 
 				counterIncr = 2
 				err = collector.AddToCounter(testTargetID, testCounter2, counterIncr)
 				time.Sleep(cycle)
-				pushed = dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Counters
+				lastPush = dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 				Ω(err).Should(BeNil())
-				Ω(pushed[testCounter2]).Should(Equal(counterIncr))
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Counters[testCounter2]).Should(Equal(counterIncr))
 
 				counterIncr = 3
 				err = collector.AddToCounter(testTargetID, totalCounter, counterIncr)
 				time.Sleep(cycle)
-				pushed = dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Counters
+				lastPush = dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 				Ω(err).Should(BeNil())
-				Ω(pushed[totalCounter]).Should(Equal(counterIncr))
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Counters[totalCounter]).Should(Equal(counterIncr))
 			})
 
 			// "Unable to update target counter" error check
@@ -146,8 +151,9 @@ var _ = Describe("Manager", func() {
 				var counterIncr int32 = 4
 				err = collector.AddToCounter(testTargetID, wrongID, counterIncr)
 				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Counters
-				_, ok := pushed[wrongID]
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
+				_, ok := lastPush.Counters[wrongID]
 
 				Ω(ok).Should(BeFalse())
 			})
@@ -160,16 +166,18 @@ var _ = Describe("Manager", func() {
 				metricValue = 1.1
 				err = collector.AddMetricValue(testTargetID, testMetric1, metricValue)
 				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Metrics
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 				Ω(err).Should(BeNil())
-				Ω(pushed[testMetric1]).Should(Equal(metricValue))
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Metrics[testMetric1]).Should(Equal(metricValue))
 
 				metricValue = 1.2
 				err = collector.AddMetricValue(testTargetID, testMetric2, metricValue)
 				time.Sleep(cycle)
-				pushed = dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Metrics
+				lastPush = dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 				Ω(err).Should(BeNil())
-				Ω(pushed[testMetric2]).Should(Equal(metricValue))
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Metrics[testMetric2]).Should(Equal(metricValue))
 			})
 
 			// "Unable to update target metric" error check
@@ -178,8 +186,8 @@ var _ = Describe("Manager", func() {
 				err = collector.AddMetricValue(testTargetID, wrongID, metricValue)
 				time.Sleep(cycle)
 
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Metrics
-				_, ok := pushed[wrongID]
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
+				_, ok := lastPush.Metrics[wrongID]
 
 				Ω(ok).Should(BeFalse())
 			})
@@ -194,10 +202,11 @@ var _ = Describe("Manager", func() {
 
 				err = collector.HealthMessage(testTargetID, affectHealthMsg)
 				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Messages
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 
 				Ω(err).Should(BeNil())
-				Ω(pushed[0]).Should(Equal(affectHealthMsg))
+				Ω(lastPush.Messages[0]).Should(Equal(affectHealthMsg))
 			})
 
 			It("should push non-health-affecting message to the registered target", func() {
@@ -208,10 +217,11 @@ var _ = Describe("Manager", func() {
 
 				err = collector.HealthMessage(testTargetID, infoMsg)
 				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Messages
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 
 				Ω(err).Should(BeNil())
-				Ω(pushed[0]).Should(Equal(infoMsg))
+				Ω(lastPush.Messages[0]).Should(Equal(infoMsg))
 			})
 		})
 
@@ -219,20 +229,22 @@ var _ = Describe("Manager", func() {
 			It("should push updated health status to the registered target", func() {
 				err = collector.ChangeHealth(testTargetID, target.Degrade)
 				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Status
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 
 				Ω(err).Should(BeNil())
-				Ω(pushed).Should(Equal(target.Degrade))
+				Ω(lastPush.Status).Should(Equal(target.Degrade))
 			})
 
 			// TargetNotRegistered error check
 			It("should raise errTargetNotRegistered", func() {
 				err = collector.ChangeHealth(wrongID, target.Degrade)
 				time.Sleep(cycle)
-				targetId := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).ID
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 
 				Ω(err).Should(BeNil())
-				Ω(targetId).ShouldNot(Equal(wrongID))
+				Ω(lastPush.ID).ShouldNot(Equal(wrongID))
 			})
 		})
 	})
@@ -285,84 +297,123 @@ var _ = Describe("Manager", func() {
 		})
 
 		Context("Dynamic measure ID registration test", func() {
-			It("should register new metric id and push the measure", func() {
+			It("should register new counter id and push the measure", func() {
 				newMeasureId := "new.id.1"
+				var counterIncr int32 = 5
+				err = collector.AddToCounter(testTargetID, newMeasureId, counterIncr)
+				time.Sleep(cycle)
+
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
+
+				Ω(err).Should(BeNil())
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Counters[newMeasureId]).Should(Equal(counterIncr))
+			})
+
+			It("should register new metric id and push the measure", func() {
+				newMeasureId := "new.id.2"
 				metricValue := 1.4
 				err = collector.AddMetricValue(testTargetID, newMeasureId, metricValue)
 				time.Sleep(cycle)
 
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Metrics
-				_, ok := pushed[newMeasureId]
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
 
-				Ω(ok).Should(BeTrue())
-			})
-
-			It("should register new counter id and push the measure", func() {
-				newMeasureId2 := "new.id.2"
-				var counterIncr int32 = 5
-				err = collector.AddToCounter(testTargetID, newMeasureId2, counterIncr)
-				time.Sleep(cycle)
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Counters
-				_, ok := pushed[newMeasureId2]
-
-				Ω(ok).Should(BeTrue())
+				Ω(err).Should(BeNil())
+				Ω(lastPush.ID).Should(Equal(testTargetID))
+				Ω(lastPush.Metrics[newMeasureId]).Should(Equal(metricValue))
 			})
 
 			It("AddToCounter should raise errMeasureIDTaken", func() {
-				takenMeasureId := "new.id.1"
+				takenMeasureId := "new.id.3"
 				var counterIncr int32 = 6
+				metricValue := 1.5
+
+				err = collector.AddMetricValue(testTargetID, takenMeasureId, metricValue)
 				err = collector.AddToCounter(testTargetID, takenMeasureId, counterIncr)
 				time.Sleep(cycle)
 
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Metrics
-				_, ok := pushed[takenMeasureId]
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
+				_, ok := lastPush.Counters[takenMeasureId]
 
 				Ω(ok).Should(BeFalse())
 			})
 
 			It("AddMetricValue should raise errMeasureIDTaken", func() {
-				takenMeasureId := "new.id.2"
-				metricValue := 1.5
+				takenMeasureId := "new.id.4"
+				var counterIncr int32 = 7
+				metricValue := 1.6
+
+				err = collector.AddToCounter(testTargetID, takenMeasureId, counterIncr)
 				err = collector.AddMetricValue(testTargetID, takenMeasureId, metricValue)
 				time.Sleep(cycle)
 
-				pushed := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health).Counters
-				_, ok := pushed[takenMeasureId]
+				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[0].(*target.Health)
+				_, ok := lastPush.Metrics[takenMeasureId]
 
 				Ω(ok).Should(BeFalse())
 			})
 		})
 
-		Context("Build target from metric test", func() {
+		Context("Build target from measure test", func() {
 			It("should build target from HeartBeat measure", func() {
-				newTargetID := "new.target.3"
+				newTargetID := "new.target.1"
 
 				go func() {
 					err = collector.HeartBeat(newTargetID)
 				}()
 				time.Sleep(3 * cycle)
 
+				var newTargetPush *target.Health
+				for _, call := range dest.Calls {
+					push := call.Arguments[0].(*target.Health)
+					if push.ID == newTargetID && push.Heartbeat.Enabled == true {
+						newTargetPush = push
+					}
+				}
+
 				Ω(err).Should(BeNil())
+				Ω(newTargetPush).ShouldNot(BeNil())
+				Ω(newTargetPush.Heartbeat.Beats).Should(BeTrue())
 			})
 
 			It("should build target from counter change measure", func() {
 				newTargetID := "new.target.2"
-				newMeasureID := "new.id.4"
-				var counterIncr int32 = 7
+				newMeasureID := "new.id.5"
+				var counterIncr int32 = 8
 
 				err = collector.AddToCounter(newTargetID, newMeasureID, counterIncr)
+				time.Sleep(2 * cycle)
+
+				var newTargetPush *target.Health
+				for _, call := range dest.Calls {
+					push := call.Arguments[0].(*target.Health)
+					if push.ID == newTargetID && push.Counters[newMeasureID] == counterIncr {
+						newTargetPush = push
+					}
+				}
 
 				Ω(err).Should(BeNil())
+				Ω(newTargetPush).ShouldNot(BeNil())
 			})
 
 			It("should build target from metric measure", func() {
-				newTargetID := "new.target.1"
-				newMeasureID := "new.id.3"
-				metricValue := 1.6
+				newTargetID := "new.target.3"
+				newMeasureID := "new.id.6"
+				metricValue := 1.7
 
 				err = collector.AddMetricValue(newTargetID, newMeasureID, metricValue)
+				time.Sleep(2 * cycle)
+
+				var newTargetPush *target.Health
+				for _, call := range dest.Calls {
+					push := call.Arguments[0].(*target.Health)
+					if push.ID == newTargetID && push.Metrics[newMeasureID] == metricValue {
+						newTargetPush = push
+					}
+				}
 
 				Ω(err).Should(BeNil())
+				Ω(newTargetPush).ShouldNot(BeNil())
 			})
 		})
 	})

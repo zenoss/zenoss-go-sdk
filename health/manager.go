@@ -48,9 +48,6 @@ type Manager interface {
 	Start(ctx context.Context, measureOut <-chan *targetMeasurement, healthIn chan<- *target.Health)
 	// AddTargets provides a simple interface to register monitored targets
 	AddTargets(targets []*target.Target)
-	// FlushData calculates and writes all data that we have collected for last cycle to the writer
-	// It triggers automaticaly once per collection cycle but you can also trigger it manually
-	FlushData() error
 }
 
 // NewManager creates a new Manager instance with internal target registry.
@@ -125,6 +122,7 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 		if err != nil {
 			return fmt.Errorf("Unable to register target automatically: %w", err)
 		}
+		hm.registry.setRawHealthForTarget(targetHealth)
 	}
 
 	switch measure.measureType {
@@ -208,14 +206,6 @@ func (hm *healthManager) buildTargetFromMeasure(measure *targetMeasurement) (*ra
 		return nil, err
 	}
 	return newRawHealth(target, metricIDs), nil
-}
-
-func (hm *healthManager) FlushData() error {
-	if !hm.started {
-		return errors.ErrManagerNotStarted
-	}
-	hm.writeHealthResult(hm.healthIn)
-	return nil
 }
 
 // Calculates raw health data from the registry and forwards all health data to the writer once per cycle
