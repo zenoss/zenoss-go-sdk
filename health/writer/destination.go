@@ -18,7 +18,7 @@ type Destination interface {
 
 // NewLogDestination creates a new LogDestination instance
 // Logger should be created earlier and passed as a parameter
-func NewLogDestination(logger *zerolog.Logger) Destination {
+func NewLogDestination(logger *zerolog.Logger) *LogDestination {
 	return &LogDestination{log: logger}
 }
 
@@ -33,6 +33,7 @@ func (l *LogDestination) Push(ctx context.Context, health *target.Health) error 
 	return nil
 }
 
+// Register takes target data and builds a nice log message with it on info level
 func (l *LogDestination) Register(ctx context.Context, target *target.Target) error {
 	l.logTargetInfo(target)
 	return nil

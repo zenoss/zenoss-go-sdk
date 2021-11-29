@@ -32,7 +32,7 @@ const (
 )
 
 func (hs HealthStatus) String() string {
-	return [...]string{"Healthy", "Degrade", "Unhealthy"}[hs]
+	return [...]string{utils.HealthyStatus, utils.DegradeStatus, utils.UnhealthyStatus}[hs]
 }
 
 // Health is a ready to send object that keeps all calculated health data during last cycle

@@ -2,7 +2,6 @@ package writer
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	structpb "github.com/golang/protobuf/ptypes/struct"
@@ -59,6 +58,7 @@ type ZCDestination struct {
 	Config   *ZCDestinationConfig
 }
 
+// Register takes target, builds model and pushes it to preconfigured ZC endpoint
 func (d *ZCDestination) Register(ctx context.Context, target *target.Target) error {
 	model := &zpb.Model{}
 	model.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
@@ -70,12 +70,11 @@ func (d *ZCDestination) Register(ctx context.Context, target *target.Target) err
 		return err
 	}
 
-	log.GetLogger().Debug().Msgf("%v", result) // TODO: create a nice log
-
+	log.GetLogger().Debug().Msgf("Models push statistic: succeed: %d, failed: %d", result.Succeeded, result.Failed)
 	return nil
 }
 
-// Push takes health data and builds a nice log message with it on info level
+// Push takes health, builds metrics and pushes them to preconfigured ZC endpoint
 func (d *ZCDestination) Push(ctx context.Context, health *target.Health) error {
 	canonicalMetrics := d.buildCanonicalMetrics(health)
 
@@ -97,8 +96,7 @@ func (d *ZCDestination) Push(ctx context.Context, health *target.Health) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%v", result)
-	log.GetLogger().Debug().Msgf("%v", result) // TODO: create a nice log
+	log.GetLogger().Debug().Msgf("Metrics push statistic: succeed: %d, failed: %d", result.Succeeded, result.Failed)
 	return nil
 }
 
@@ -117,10 +115,6 @@ func (d *ZCDestination) buildCanonicalMetrics(health *target.Health) []*zpb.Metr
 	}
 
 	return metrics
-}
-
-func (d *ZCDestination) buildCompactMetrics(health *target.Health) {
-
 }
 
 func (d *ZCDestination) buildMetric(targetID, targetType, metricID string, value float64) *zpb.Metric {

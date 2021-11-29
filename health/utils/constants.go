@@ -1,5 +1,6 @@
 package utils
 
+// List of constant keys and values for health framework
 const (
 	SourceTypeKey     = "source-type"
 	DefaultSourceType = "zengo.health" // ZEN+NG+GO ZENoss NewGeneration GO :)
@@ -10,4 +11,8 @@ const (
 	SystemTypeKey = "system-type"
 
 	DefaultTargetType = "default"
+
+	HealthyStatus   = "Healthy"
+	DegradeStatus   = "Degrade"
+	UnhealthyStatus = "Unhealthy"
 )

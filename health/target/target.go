@@ -8,7 +8,7 @@ import (
 )
 
 // New creates a new Target object
-// If you set tType an empty string it will have "default" valie assgined
+// If you set tType an empty string it will have "default" value assgined
 func New(
 	id, tType string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
 ) (*Target, error) {
