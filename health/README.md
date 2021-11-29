@@ -41,17 +41,17 @@ At this point you should create your [destination](#destination), [writer](#writ
 ```go
 // Define writer and its destination
 logDestination := writer.NewLogDestination(log.GetLogger())
-writer := writer.New(logDestination)
+writer := writer.New([]writer.Destination{logDestination})
 
 // init health manager
-manager := health.NewManager(ctx, config, writer)
+manager := health.NewManager(ctx, config)
 
 // add configured targets
 manager.AddTargets(targets)
 
 // start health monitoring
 // after this you are safe to call collector in any part of your program
-go manager.Start(ctx)
+health.FrameworkStart(ctx, config, manager, writer)
 ```
 
 ### Collection
@@ -107,6 +107,7 @@ Provided by health/target package. Target object keeps data about all its metric
 
 Target data:
 * ID
+* Type - just a string. Should help to categorize your targets and will be used to help define target priority. You can pass empty string, "default" value will be used then.
 * MetricIDs - list of float metric IDs (calculate avg value for each metric every cycle)
 * CounterIDs - list of counter IDs (resets to 0 every cycle)
 * TotalCounterIDs - list of total counter IDs (will not be reset every cycle)
@@ -116,17 +117,38 @@ Target config:
 
 ### Destination
 
-Destination object should implment Destination interface (lives in health/writer package). It should have only one method: Push. This method takes [health object](#target-health) and sends it to the place you want. We have these available destinations:
+Destination object should implement Destination interface (lives in health/writer package). It should have two methods: Register and Push. Register takes [health target](#target) when you add it and makes all required work to prepare destination for future data. Push takes [health object](#target-health) and sends it to the place you want. We have these available destinations:
 * LogDestination - it will simply output your health data as a log message on info level.
+* ZCDestination - it allows you to push health data directly to the ZING under your tenant. It will push target data as a model and health data as metrics (right now only counters and metrics work). To start use ZCDestination you also need to prepare ZCDestinationConfig. Example how it looks like:
+```go
+config := &writer.ZCDestinationConfig{
+    EndpointConfig: &endpoint.Config{
+        APIKey:         "<your-api-key>",
+        Address:        "api.zing.soy:443",
+        // these parameters are used for compact metrics cache
+        MinTTL:         432000,
+        MaxTTL:         576000,
+        CacheSizeLimit: 0,
+    },
+    SystemName: "my-system",
+    SystemType: "example",
+    Metadata: map[string]string{
+        "host": "127.0.0.1",
+    },
+}
+```
 
 ### Writer
 
-Writer is responsible for listening of calculated health data and sending it using destination.Push method.
-You should provided intitalized destination as a parameter in writer constructor (function New). Writer interface requires only one method: Start. This method takes channel with target.Health objects as a parameter and is responsible to listen it.
+Writer is responsible for two things:
+- listening of calculated health data and sending it using destination.Push method.
+- listening of registered targets and sending it using destination.Register method.
+You should provided intitalized destination as a parameter in writer constructor (function New). Writer interface requires only one method: Start. This method takes channels with target.Health and target.Target objects as a parameters and is responsible to listen it.
 
 ### Manager
 
-Manager is a heart of our framework. During Start call it is initializing all comunication channels: Collector->Manager->Writer. To be on the safe side call AddTargets method befor Start. Manager has target registry and is responsible to calculate all collected health data once per cycle and send it to writer.
+Manager is a heart of our framework. During Start call it starts to listend for all comunication channels: Collector->Manager->Writer. Manager has target registry and is responsible to calculate all collected health data once per cycle and send it to writer.
+Manager also keeps FrameworkStart function. You should use it as a started for health framework. It initializes communication channels and collector and starts writer and manager.
 
 ### Message
 
@@ -138,7 +160,8 @@ Message struct lives in health/target package. It has these fields:
 ### Target Health
 
 Lives in health/targer package. It is a final look of target's health data. Right now it has such fields:
-* ID - targetID
+* TargetID
+* TargetType
 * Healthy - health status of the target
 * Heartbeat - object with two values: Enabled, Beats. Enabled shows you whether you described that you want to collect heartbeat info. Beats will be true if we received heartbeat info during last cycle.
 * Counters - map of all (default and total) counters with their values

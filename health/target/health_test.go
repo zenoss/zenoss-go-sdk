@@ -23,7 +23,7 @@ var _ = Describe("Target's Health Constructor", func() {
 	)
 
 	It("should return a new Health", func() {
-		health := target.NewHealth(id)
+		health := target.NewHealth(id, "default")
 		Ω(health).ShouldNot(BeNil())
 	})
 })

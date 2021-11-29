@@ -2,8 +2,10 @@ package writer_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -14,11 +16,17 @@ import (
 )
 
 var _ = Describe("Destination", func() {
-	var logDest writer.Destination
-	var buf bytes.Buffer
+	var (
+		ctx      context.Context
+		logDest  writer.Destination
+		buf      bytes.Buffer
+		targetID string
+	)
 
 	BeforeEach(func() {
+		ctx = context.Background()
 		buf = bytes.Buffer{}
+		targetID = "test"
 	})
 
 	Context("NewLogDestination", func() {
@@ -32,13 +40,16 @@ var _ = Describe("Destination", func() {
 
 	Context("Push", func() {
 		It("should output Health info", func() {
-			health := target.NewHealth("1")
+			health := target.NewHealth(targetID, "")
+			summaryMessage := "Test summary"
 			health.Messages = []*target.Message{target.NewMessage(
-				"sum", errors.New("err"), true, target.Unhealthy,
+				summaryMessage, errors.New("err"), true, target.Unhealthy,
 			)}
-			expectedMsg := "TargetID: 1, Status=Healthy, Counters=map[], Metrics=map[], Messages=[sum]"
+			expectedMsg := fmt.Sprintf(
+				"TargetID: %s, Status=Healthy, Counters=map[], Metrics=map[], Messages=[%s]",
+				targetID, summaryMessage)
 
-			err := logDest.Push(health)
+			err := logDest.Push(ctx, health)
 			var output map[string]interface{}
 			_ = json.Unmarshal(buf.Bytes(), &output)
 
@@ -47,14 +58,16 @@ var _ = Describe("Destination", func() {
 		})
 
 		It("should output Health and HeartBeat info", func() {
-			health := target.NewHealth("2")
+			health := target.NewHealth(targetID, "")
 			health.Heartbeat = &target.HeartBeat{
 				Enabled: true,
 				Beats:   true,
 			}
-			expectedMsg := "TargetID: 2, Status=Healthy, Heartbeat=true, Counters=map[], Metrics=map[], Messages=[]"
+			expectedMsg := fmt.Sprintf(
+				"TargetID: %s, Status=Healthy, Heartbeat=true, Counters=map[], Metrics=map[], Messages=[]",
+				targetID)
 
-			err := logDest.Push(health)
+			err := logDest.Push(ctx, health)
 			var output map[string]interface{}
 			_ = json.Unmarshal(buf.Bytes(), &output)
 

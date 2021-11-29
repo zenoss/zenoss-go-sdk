@@ -2,6 +2,7 @@ package writer_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -12,13 +13,14 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
+	"github.com/zenoss/zenoss-go-sdk/health/mocks"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
-	"github.com/zenoss/zenoss-go-sdk/health/writer/mocks"
 )
 
 var _ = Describe("Writer", func() {
 	var (
+		ctx          context.Context
 		healthWriter writer.HealthWriter
 		log          zerolog.Logger
 		buf          bytes.Buffer
@@ -27,6 +29,7 @@ var _ = Describe("Writer", func() {
 	)
 
 	BeforeEach(func() {
+		ctx = context.Background()
 		buf = bytes.Buffer{}
 		log = logging.GetLogger().Output(&buf)
 		logging.SetLogger(&log)
@@ -35,7 +38,7 @@ var _ = Describe("Writer", func() {
 		mockDest = &mocks.Destination{}
 		dests = []writer.Destination{logDest, mockDest}
 
-		mockDest.On("Push", mock.AnythingOfType("*target.Health")).Return(
+		mockDest.On("Push", ctx, mock.AnythingOfType("*target.Health")).Return(
 			errors.New("Unable to push health message"),
 		)
 	})
@@ -49,13 +52,14 @@ var _ = Describe("Writer", func() {
 
 	Context("Start", func() {
 		It("should log Health info and mocked destination error", func() {
-			h := target.NewHealth("1")
+			h := target.NewHealth("1", "")
 
-			ch := make(chan *target.Health)
-			go healthWriter.Start(ch)
-			ch <- h
+			hCh := make(chan *target.Health)
+			tCh := make(chan *target.Target)
+			go healthWriter.Start(ctx, hCh, tCh)
+			hCh <- h
 			time.Sleep(1 * time.Second)
-			close(ch)
+			close(hCh)
 			out := buf.String()
 
 			Ω(strings.Contains(out,
