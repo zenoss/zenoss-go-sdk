@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -15,6 +15,7 @@ import (
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/mocks"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/utils"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 )
 
@@ -38,8 +39,13 @@ var _ = Describe("Writer", func() {
 		mockDest = &mocks.Destination{}
 		dests = []writer.Destination{logDest, mockDest}
 
+		pushErr := "Unable to push health message"
+		regErr := "Unable to register health target"
 		mockDest.On("Push", ctx, mock.AnythingOfType("*target.Health")).Return(
-			errors.New("Unable to push health message"),
+			errors.New(pushErr),
+		)
+		mockDest.On("Register", ctx, mock.AnythingOfType("*target.Target")).Return(
+			errors.New(regErr),
 		)
 	})
 
@@ -51,23 +57,27 @@ var _ = Describe("Writer", func() {
 	})
 
 	Context("Start", func() {
-		It("should log Health info and mocked destination error", func() {
-			h := target.NewHealth("1", "")
+		It("should log Health and Target info. Mocked destination shouldn't affect writer", func() {
+			targetID := "testTarget"
+			empty := []string{}
+			hTarget, _ := target.New(
+				targetID, utils.DefaultTargetType, false,
+				empty, empty, empty,
+			)
+			h := target.NewHealth(targetID, utils.DefaultTargetType)
 
 			hCh := make(chan *target.Health)
 			tCh := make(chan *target.Target)
 			go healthWriter.Start(ctx, hCh, tCh)
+			tCh <- hTarget
 			hCh <- h
 			time.Sleep(1 * time.Second)
 			close(hCh)
+			close(tCh)
 			out := buf.String()
 
-			Ω(strings.Contains(out,
-				"\"message\":\"TargetID: 1, Status=Healthy, Counters=map[], Metrics=map[], Messages=[]\"",
-			)).Should(BeTrue())
-			Ω(strings.Contains(out,
-				"\"error\":\"Unable to push health message\"",
-			)).Should(BeTrue())
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("TargetID: %s, Status=Healthy", targetID)))
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("Got target update TargetID: %s", targetID)))
 		})
 	})
 })
