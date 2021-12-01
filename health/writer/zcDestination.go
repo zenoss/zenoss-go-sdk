@@ -48,7 +48,7 @@ type ZCDestinationConfig struct {
 	// SystemName should help you to split your monitored systems as unique entities if you have a few
 	SystemName string
 	// Metadata that will be added to you datapoints.
-	// There is also some metadata that will be present in datapoint by defualt: source-type
+	// There is also some metadata that will be present in datapoint by default: source-type
 	Metadata map[string]string
 }
 
