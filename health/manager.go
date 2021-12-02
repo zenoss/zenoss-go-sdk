@@ -17,14 +17,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zenoss/zenoss-go-sdk/health/errors"
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/utils"
 	w "github.com/zenoss/zenoss-go-sdk/health/writer"
-	"github.com/zenoss/zenoss-go-sdk/utils"
+	sdk_utils "github.com/zenoss/zenoss-go-sdk/utils"
 )
 
 // FrameworkStart initializes dependencies and starts health monitoring
+// If you call it in goroutine, you need to wait a little bit for collector to initialize
 func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) {
 	if cfg.LogLevel != "" {
 		logging.SetLogLevel(cfg.LogLevel)
@@ -32,12 +33,13 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 	measurementsCh := make(chan *targetMeasurement)
 	healthCh := make(chan *target.Health)
+	targetCh := make(chan *target.Target)
 
 	InitCollector(cfg.CollectionCycle, measurementsCh)
 
-	go m.Start(ctx, measurementsCh, healthCh)
+	go m.Start(ctx, measurementsCh, healthCh, targetCh)
 
-	go writer.Start(healthCh)
+	go writer.Start(ctx, healthCh, targetCh)
 }
 
 // Manager keeps all information about targets and provides a functionality
@@ -45,7 +47,10 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 type Manager interface {
 	// Start method should initialize collector with it's configuration and
 	// define a method to send data to a writer
-	Start(ctx context.Context, measureOut <-chan *targetMeasurement, healthIn chan<- *target.Health)
+	Start(
+		ctx context.Context, measureOut <-chan *targetMeasurement,
+		healthIn chan<- *target.Health, targetIn chan<- *target.Target,
+	)
 	// AddTargets provides a simple interface to register monitored targets
 	AddTargets(targets []*target.Target)
 }
@@ -66,16 +71,20 @@ type healthManager struct {
 	registry healthRegistry
 	config   *Config
 	healthIn chan<- *target.Health
+	targetIn chan<- *target.Target
 	started  bool
 }
 
 func (hm *healthManager) Start(
-	ctx context.Context, measureOut <-chan *targetMeasurement, healthIn chan<- *target.Health,
+	ctx context.Context, measureOut <-chan *targetMeasurement,
+	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
 ) {
+	hm.targetIn = targetIn
 	hm.healthIn = healthIn
 	go hm.listenMeasurements(ctx, measureOut)
 
 	go hm.healthForwarder(ctx, healthIn)
+	hm.sendTargetsInfo() // if some targets where added before start we need to register them
 	hm.started = true
 }
 
@@ -83,8 +92,17 @@ func (hm *healthManager) AddTargets(targets []*target.Target) {
 	hm.registry.lock()
 	defer hm.registry.unlock()
 
-	for _, target := range targets {
-		hm.registry.setRawHealthForTarget(newRawHealth(target, target.MetricIDs))
+	for _, newTarget := range targets {
+		hm.registry.setRawHealthForTarget(newRawHealth(newTarget, newTarget.MetricIDs))
+		if hm.started {
+			hm.targetIn <- newTarget
+		}
+	}
+}
+
+func (hm *healthManager) sendTargetsInfo() {
+	for _, rawHealth := range hm.registry.getRawHealthMap() {
+		hm.targetIn <- rawHealth.target
 	}
 }
 
@@ -116,7 +134,7 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 	targetHealth, ok := hm.registry.getRawHealthForTarget(measure.targetID)
 	if !ok {
 		if !hm.config.RegistrationOnCollect {
-			return errors.ErrTargetNotRegistered
+			return utils.ErrTargetNotRegistered
 		}
 		targetHealth, err = hm.buildTargetFromMeasure(measure)
 		if err != nil {
@@ -152,12 +170,12 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 }
 
 func (hm *healthManager) updateTargetsMetric(tHealth *rawHealth, measure *targetMeasurement) error {
-	if !utils.ListContainsString(tHealth.target.MetricIDs, measure.measureID) {
+	if !sdk_utils.ListContainsString(tHealth.target.MetricIDs, measure.measureID) {
 		if !hm.config.RegistrationOnCollect {
-			return errors.ErrMetricNotRegistered
+			return utils.ErrMetricNotRegistered
 		}
 		if !tHealth.target.IsMeasureIDUnique(measure.measureID) {
-			return errors.ErrMeasureIDTaken
+			return utils.ErrMeasureIDTaken
 		}
 		tHealth.target.MetricIDs = append(tHealth.target.MetricIDs, measure.measureID)
 		tHealth.rawMetrics[measure.measureID] = []float64{measure.metricValue}
@@ -171,15 +189,15 @@ func (hm *healthManager) updateTargetsMetric(tHealth *rawHealth, measure *target
 }
 
 func (hm *healthManager) updateTargetsCounter(tHealth *rawHealth, measure *targetMeasurement) error {
-	if utils.ListContainsString(tHealth.target.TotalCounterIDs, measure.measureID) {
+	if sdk_utils.ListContainsString(tHealth.target.TotalCounterIDs, measure.measureID) {
 		tHealth.totalCounters[measure.measureID] += measure.counterChange
 	} else {
-		if !utils.ListContainsString(tHealth.target.CounterIDs, measure.measureID) {
+		if !sdk_utils.ListContainsString(tHealth.target.CounterIDs, measure.measureID) {
 			if !hm.config.RegistrationOnCollect {
-				return errors.ErrCounterNotRegistered
+				return utils.ErrCounterNotRegistered
 			}
 			if !tHealth.target.IsMeasureIDUnique(measure.measureID) {
-				return errors.ErrMeasureIDTaken
+				return utils.ErrMeasureIDTaken
 			}
 			tHealth.target.CounterIDs = append(tHealth.target.CounterIDs, measure.measureID)
 		}
@@ -201,7 +219,10 @@ func (hm *healthManager) buildTargetFromMeasure(measure *targetMeasurement) (*ra
 	case counterChange:
 		counterIDs = []string{measure.measureID}
 	}
-	target, err := target.New(measure.targetID, enableHeartbeat, metricIDs, counterIDs, totalCounterIDs)
+	target, err := target.New(
+		measure.targetID, utils.DefaultTargetType, enableHeartbeat,
+		metricIDs, counterIDs, totalCounterIDs,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +261,7 @@ func (hm *healthManager) writeHealthResult(healthIn chan<- *target.Health) {
 }
 
 func (hm *healthManager) calculateTargetHealth(rawHealth *rawHealth) *target.Health {
-	health := target.NewHealth(rawHealth.target.ID)
+	health := target.NewHealth(rawHealth.target.ID, rawHealth.target.Type)
 	health.Status = rawHealth.status
 	health.Heartbeat.Enabled = rawHealth.target.EnableHeartbeat
 	health.Heartbeat.Beats = rawHealth.heartBeat

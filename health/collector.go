@@ -3,8 +3,8 @@ package health
 import (
 	"time"
 
-	"github.com/zenoss/zenoss-go-sdk/health/errors"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
 var (
@@ -46,7 +46,7 @@ func ShutDownCollector() {
 // GetCollector returns a health collector instance if it was already initialized by manager
 func GetCollector() (Collector, error) {
 	if collector == nil {
-		return nil, errors.ErrDeadCollector
+		return nil, utils.ErrDeadCollector
 	}
 	return collector, nil
 }
@@ -63,7 +63,7 @@ func (hc *healthCollector) HeartBeat(targetID string) error {
 		select {
 		case <-ticker.C:
 			if !hc.isRunning {
-				return errors.ErrDeadCollector
+				return utils.ErrDeadCollector
 			}
 			measure := &targetMeasurement{
 				targetID:    targetID,
@@ -76,7 +76,7 @@ func (hc *healthCollector) HeartBeat(targetID string) error {
 
 func (hc *healthCollector) AddToCounter(targetID, counterID string, value int32) error {
 	if !hc.isRunning {
-		return errors.ErrDeadCollector
+		return utils.ErrDeadCollector
 	}
 	measure := &targetMeasurement{
 		targetID:      targetID,
@@ -90,7 +90,7 @@ func (hc *healthCollector) AddToCounter(targetID, counterID string, value int32)
 
 func (hc *healthCollector) AddMetricValue(targetID, metricID string, value float64) error {
 	if !hc.isRunning {
-		return errors.ErrDeadCollector
+		return utils.ErrDeadCollector
 	}
 	measure := &targetMeasurement{
 		targetID:    targetID,
@@ -104,7 +104,7 @@ func (hc *healthCollector) AddMetricValue(targetID, metricID string, value float
 
 func (hc *healthCollector) HealthMessage(targetID string, msg *target.Message) error {
 	if !hc.isRunning {
-		return errors.ErrDeadCollector
+		return utils.ErrDeadCollector
 	}
 	measure := &targetMeasurement{
 		targetID:    targetID,
@@ -117,7 +117,7 @@ func (hc *healthCollector) HealthMessage(targetID string, msg *target.Message) e
 
 func (hc *healthCollector) ChangeHealth(targetID string, status target.HealthStatus) error {
 	if !hc.isRunning {
-		return errors.ErrDeadCollector
+		return utils.ErrDeadCollector
 	}
 	measure := &targetMeasurement{
 		targetID:     targetID,

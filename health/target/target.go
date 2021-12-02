@@ -3,13 +3,14 @@
 package target
 
 import (
-	"github.com/zenoss/zenoss-go-sdk/health/errors"
-	"github.com/zenoss/zenoss-go-sdk/utils"
+	"github.com/zenoss/zenoss-go-sdk/health/utils"
+	sdk_utils "github.com/zenoss/zenoss-go-sdk/utils"
 )
 
 // New creates a new Target object
+// If you set tType an empty string it will have "default" value assgined
 func New(
-	id string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
+	id, tType string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
 ) (*Target, error) {
 	set := make(map[string]struct{})
 	for _, val := range metricIDs {
@@ -22,10 +23,14 @@ func New(
 		set[val] = struct{}{}
 	}
 	if len(set) < len(metricIDs)+len(counterIDs)+len(totalCounterIDs) {
-		return nil, errors.ErrMeasureIDTaken
+		return nil, utils.ErrMeasureIDTaken
+	}
+	if tType == "" {
+		tType = utils.DefaultTargetType
 	}
 	return &Target{
 		ID:              id,
+		Type:            tType,
 		EnableHeartbeat: enableHeartbeat,
 		MetricIDs:       metricIDs,
 		CounterIDs:      counterIDs,
@@ -41,6 +46,10 @@ type Target struct {
 	CounterIDs      []string
 	TotalCounterIDs []string
 
+	// Type is just a string that helps you to categorize your targets
+	// In future it will also help us to define proirity of different type of targets
+	Type string
+
 	// whether you want the heartbeat to affect your targets health
 	EnableHeartbeat bool
 }
@@ -48,7 +57,7 @@ type Target struct {
 // IsMeasureIDUnique searches through all metric and counter IDs and
 // returns false if such ID is already taken
 func (t *Target) IsMeasureIDUnique(ID string) bool {
-	return !(utils.ListContainsString(t.MetricIDs, ID) ||
-		utils.ListContainsString(t.CounterIDs, ID) ||
-		utils.ListContainsString(t.TotalCounterIDs, ID))
+	return !(sdk_utils.ListContainsString(t.MetricIDs, ID) ||
+		sdk_utils.ListContainsString(t.CounterIDs, ID) ||
+		sdk_utils.ListContainsString(t.TotalCounterIDs, ID))
 }

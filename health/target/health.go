@@ -1,9 +1,15 @@
 package target
 
+import "github.com/zenoss/zenoss-go-sdk/health/utils"
+
 // NewHealth initializes a new Health object with target ID
-func NewHealth(id string) *Health {
+func NewHealth(id, tType string) *Health {
+	if tType == "" {
+		tType = utils.DefaultTargetType
+	}
 	return &Health{
-		ID: id,
+		TargetID:   id,
+		TargetType: tType,
 
 		Status:    Healthy,
 		Heartbeat: &HeartBeat{},
@@ -26,12 +32,14 @@ const (
 )
 
 func (hs HealthStatus) String() string {
-	return [...]string{"Healthy", "Degrade", "Unhealthy"}[hs]
+	return [...]string{utils.HealthyStatus, utils.DegradeStatus, utils.UnhealthyStatus}[hs]
 }
 
 // Health is a ready to send object that keeps all calculated health data during last cycle
 type Health struct {
-	ID        string
+	TargetID   string
+	TargetType string
+
 	Status    HealthStatus
 	Heartbeat *HeartBeat
 	Counters  map[string]int32

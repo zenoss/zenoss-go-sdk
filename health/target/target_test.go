@@ -7,8 +7,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
-	"github.com/zenoss/zenoss-go-sdk/health/errors"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
 func TestHealthTarget(t *testing.T) {
@@ -34,13 +34,13 @@ var _ = Describe("Target Constructor", func() {
 
 	It("should return an error if measure is not unique", func() {
 		metricIDs = append(metricIDs, mockStr)
-		target, err := target.New(id, true, metricIDs, counterIDs, tCounterIDs)
+		target, err := target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
 		Ω(target).Should(BeNil())
-		Ω(err).Should(Equal(errors.ErrMeasureIDTaken))
+		Ω(err).Should(Equal(utils.ErrMeasureIDTaken))
 	})
 
 	It("should return a new Target", func() {
-		target, err := target.New(id, true, metricIDs, counterIDs, tCounterIDs)
+		target, err := target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
 		Ω(err).Should(BeNil())
 		Ω(target).ShouldNot(BeNil())
 	})
@@ -59,7 +59,7 @@ var _ = Describe("Target IsMeasureIDUnique method", func() {
 		counterIDs := []string{"someCounter"}
 		tCounterIDs := []string{"totalCounter"}
 
-		testTarget, _ = target.New(id, true, metricIDs, counterIDs, tCounterIDs)
+		testTarget, _ = target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
 	})
 
 	It("should return false if measure is not unique", func() {
