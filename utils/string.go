@@ -1,6 +1,6 @@
 package utils
 
-import structpb "github.com/golang/protobuf/ptypes/struct"
+import "google.golang.org/protobuf/types/known/structpb"
 
 // ListContainsString just searches if the val is in string list
 func ListContainsString(list []string, val string) bool {

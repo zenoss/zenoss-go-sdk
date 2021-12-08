@@ -3,7 +3,7 @@ package metadata
 import (
 	"fmt"
 
-	_struct "github.com/golang/protobuf/ptypes/struct"
+	_struct "google.golang.org/protobuf/types/known/structpb"
 )
 
 type (
