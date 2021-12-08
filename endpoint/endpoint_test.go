@@ -17,11 +17,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	_struct "github.com/golang/protobuf/ptypes/struct"
 	"github.com/zenoss/zenoss-go-sdk/endpoint"
 	"github.com/zenoss/zenoss-go-sdk/log"
 	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
+	_struct "google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestEndpoint(t *testing.T) {

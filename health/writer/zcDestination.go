@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	structpb "github.com/golang/protobuf/ptypes/struct"
 	"github.com/rs/zerolog"
 	"github.com/zenoss/zenoss-go-sdk/endpoint"
 	"github.com/zenoss/zenoss-go-sdk/health/log"
@@ -13,6 +12,7 @@ import (
 	endpointLog "github.com/zenoss/zenoss-go-sdk/log"
 	sdk_utils "github.com/zenoss/zenoss-go-sdk/utils"
 	zpb "github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // NewZCDestination creates a new ZCDestination instance

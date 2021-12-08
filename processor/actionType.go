@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/cbroglie/mustache"
-	_struct "github.com/golang/protobuf/ptypes/struct"
 	"github.com/mitchellh/mapstructure"
+	_struct "google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
