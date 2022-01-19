@@ -28,6 +28,12 @@ func NewZCDestination(config *ZCDestinationConfig) (*ZCDestination, error) {
 		return nil, err
 	}
 
+	if config.UseCompact &&
+		(config.EndpointConfig.MinTTL == 0 || config.EndpointConfig.MaxTTL == 0) {
+		log.GetLogger().Error().Msg("not all cache configs set. Disabling compact metrics")
+		config.UseCompact = false
+	}
+
 	return &ZCDestination{Endpoint: ep, Config: config}, nil
 }
 
@@ -42,11 +48,11 @@ type ZCDestinationConfig struct {
 	// UseCompact defines whether to send metrics in compact or canonical format
 	UseCompact bool
 
-	// SystemType should help you to categorize your monitored programs
-	// We also can define different ways to pre-process health data for different system types
-	SystemType string
-	// SystemName should help you to split your monitored systems as unique entities if you have a few
-	SystemName string
+	// SourceType should allows us to categorize different types of monitored staff
+	// We also can define different ways to pre-process health data for different source types in future
+	SourceType string
+	// SourceName allows us to split your monitored staff as unique entities if you have a few
+	SourceName string
 	// Metadata that will be added to you datapoints.
 	// There is also some metadata that will be present in datapoint by default: source-type
 	Metadata map[string]string
@@ -62,8 +68,8 @@ type ZCDestination struct {
 func (d *ZCDestination) Register(ctx context.Context, target *target.Target) error {
 	model := &zpb.Model{}
 	model.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
-	model.Dimensions = d.buildTargetDimensions(target.ID, target.Type)
-	model.MetadataFields = d.buildTargetMetadata()
+	model.Dimensions = d.buildTargetDimensions(target.ID)
+	model.MetadataFields = d.buildTargetMetadata(target.ID)
 
 	result, err := d.Endpoint.PutModels(ctx, &zpb.Models{Models: []*zpb.Model{model}})
 	if err != nil {
@@ -84,9 +90,8 @@ func (d *ZCDestination) Push(ctx context.Context, health *target.Health) error {
 		cmpMetrics = compactMetrics
 		if len(failedMetrics) > 0 {
 			log.GetLogger().Debug().Msgf("Failed to register canonical metrics: %v", failedMetrics)
-			canonicalMetrics = failedMetrics
 		}
-		return nil
+		canonicalMetrics = failedMetrics
 	}
 
 	result, err := d.Endpoint.PutMetrics(ctx, &zpb.Metrics{
@@ -104,41 +109,44 @@ func (d *ZCDestination) buildCanonicalMetrics(health *target.Health) []*zpb.Metr
 	metrics := make([]*zpb.Metric, 0)
 	for mID, mValue := range health.Metrics {
 		metrics = append(metrics, d.buildMetric(
-			health.TargetID, health.TargetType, mID, mValue,
+			health.TargetID, mID, mValue,
 		))
 	}
 
 	for cID, cValue := range health.Counters {
 		metrics = append(metrics, d.buildMetric(
-			health.TargetID, health.TargetType, cID, float64(cValue),
+			health.TargetID, cID, float64(cValue),
 		))
 	}
 
 	return metrics
 }
 
-func (d *ZCDestination) buildMetric(targetID, targetType, metricID string, value float64) *zpb.Metric {
+func (d *ZCDestination) buildMetric(targetID, metricID string, value float64) *zpb.Metric {
 	metric := &zpb.Metric{}
 	metric.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
 	metric.Metric = metricID
 	metric.Value = value
-	metric.Dimensions = d.buildTargetDimensions(targetID, targetType)
-	metric.MetadataFields = d.buildTargetMetadata()
+	metric.Dimensions = d.buildTargetDimensions(targetID)
+	metric.MetadataFields = d.buildTargetMetadata(targetID)
 	return metric
 }
 
-func (d *ZCDestination) buildTargetDimensions(targetID, targetType string) map[string]string {
+func (d *ZCDestination) buildTargetDimensions(targetID string) map[string]string {
 	dims := make(map[string]string)
 	dims[utils.TargetKey] = targetID
-	dims[utils.TargetTypeKey] = targetType
-	dims[utils.SystemTypeKey] = d.Config.SystemType
-	dims[utils.SystemKey] = d.Config.SystemName
+	if d.Config.SourceType == "" {
+		dims[utils.SourceTypeKey] = utils.DefaultSourceType
+	} else {
+		dims[utils.SourceTypeKey] = d.Config.SourceType
+	}
+	dims[utils.SourceKey] = d.Config.SourceName
 	return dims
 }
 
-func (d *ZCDestination) buildTargetMetadata() *structpb.Struct {
+func (d *ZCDestination) buildTargetMetadata(targetID string) *structpb.Struct {
 	metadata := make(map[string]*structpb.Value)
-	metadata[utils.SourceTypeKey] = sdk_utils.StrToStructValue(utils.DefaultSourceType)
+	metadata[utils.ZenossNameField] = sdk_utils.StrToStructValue(targetID)
 	for key, value := range d.Config.Metadata {
 		metadata[key] = sdk_utils.StrToStructValue(value)
 	}

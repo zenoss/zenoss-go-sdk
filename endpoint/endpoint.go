@@ -261,7 +261,8 @@ func New(config Config) (*Endpoint, error) {
 	}
 
 	var cache *ttlcache.Cache
-	if config.MinTTL != 0 && config.MaxTTL != 0 && config.CacheSizeLimit != 0 {
+	if config.MinTTL != 0 && config.MaxTTL != 0 {
+		// config.CacheSizeLimit == 0 means no limit
 		cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
 	}
 
@@ -483,7 +484,7 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 
 	for i, response := range registerMetricsresponse.Responses {
 		if response.Error != "" {
-			log.Log(e, log.LevelError, log.Fields{}, "Metric from batch was not registered")
+			log.Log(e, log.LevelError, log.Fields{"error": response.Error}, "Metric from batch was not registered")
 			metricIDsNamesAndHashes = append(metricIDsNamesAndHashes, MetricIDNameAndHash{})
 			continue
 		}

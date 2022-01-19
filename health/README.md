@@ -107,7 +107,7 @@ Provided by health/target package. Target object keeps data about all its metric
 
 Target data:
 * ID
-* Type - just a string. Should help to categorize your targets and will be used to help define target priority. You can pass empty string, "default" value will be used then.
+* Type - just a string. Should help to categorize your targets and can be used to help define target priority in future. You can pass empty string, "default" value will be used then.
 * MetricIDs - list of float metric IDs (calculate avg value for each metric every cycle)
 * CounterIDs - list of counter IDs (resets to 0 every cycle)
 * TotalCounterIDs - list of total counter IDs (will not be reset every cycle)
@@ -130,8 +130,8 @@ config := &writer.ZCDestinationConfig{
         MaxTTL:         576000,
         CacheSizeLimit: 0,
     },
-    SystemName: "my-system",
-    SystemType: "example",
+    SourceName: "my-system",
+    SourceType: "zenoss.example.health",
     Metadata: map[string]string{
         "host": "127.0.0.1",
     },

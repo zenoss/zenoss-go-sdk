@@ -108,8 +108,8 @@ fmt: ; $(info $(M) running gofmt…) @ ## Run gofmt on all files.
 
 .PHONY: clean
 clean: ; $(info $(M) cleaning…)	@ ## Cleanup everything.
-	@rm -f **/junit.xml internal/**/junit.xml
-	@rm -f **/*.coverprofile internal/**/*.coverprofile
+	@rm -f **/junit.xml **/**/junit.xml
+	@rm -f **/*.coverprofile **/**/*.coverprofile
 	@rm -rf $(COVERAGE_DIR)
 
 .PHONY: help
