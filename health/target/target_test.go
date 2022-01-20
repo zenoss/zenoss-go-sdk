@@ -18,58 +18,57 @@ func TestHealthTarget(t *testing.T) {
 	RunSpecsWithDefaultAndCustomReporters(t, "Health Target Suite", []Reporter{junitReporter})
 }
 
-var _ = Describe("Target Constructor", func() {
-	var (
+var _ = Describe("Target Tests", func() {
+	const (
 		mockStr = "mocked"
 		id      = "targetID"
-
-		metricIDs, counterIDs, tCounterIDs []string
 	)
 
-	BeforeEach(func() {
-		metricIDs = []string{"someMetric"}
-		counterIDs = []string{"someCounter"}
-		tCounterIDs = []string{"totalCounter", mockStr}
+	Context("constructor", func() {
+		var (
+			metricIDs, counterIDs, tCounterIDs []string
+		)
+		BeforeEach(func() {
+			metricIDs = []string{"someMetric"}
+			counterIDs = []string{"someCounter"}
+			tCounterIDs = []string{"totalCounter", mockStr}
+		})
+		It("should return an error if measure is not unique", func() {
+			metricIDs = append(metricIDs, mockStr)
+			target, err := target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
+			Ω(target).Should(BeNil())
+			Ω(err).Should(Equal(utils.ErrMeasureIDTaken))
+		})
+
+		It("should return a new Target", func() {
+			target, err := target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
+			Ω(err).Should(BeNil())
+			Ω(target).ShouldNot(BeNil())
+		})
 	})
 
-	It("should return an error if measure is not unique", func() {
-		metricIDs = append(metricIDs, mockStr)
-		target, err := target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
-		Ω(target).Should(BeNil())
-		Ω(err).Should(Equal(utils.ErrMeasureIDTaken))
-	})
+	Context("IsMeasureIDUnique method", func() {
+		var (
+			testTarget *target.Target
+		)
 
-	It("should return a new Target", func() {
-		target, err := target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
-		Ω(err).Should(BeNil())
-		Ω(target).ShouldNot(BeNil())
-	})
-})
+		BeforeEach(func() {
+			metricIDs := []string{"someMetric"}
+			counterIDs := []string{"someCounter"}
+			tCounterIDs := []string{"totalCounter"}
 
-var _ = Describe("Target IsMeasureIDUnique method", func() {
-	var (
-		mockStr = "mocked"
+			testTarget, _ = target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
+		})
 
-		testTarget *target.Target
-	)
+		It("should return false if measure is not unique", func() {
+			testTarget.CounterIDs = append(testTarget.CounterIDs, mockStr)
+			unique := testTarget.IsMeasureIDUnique(mockStr)
+			Ω(unique).Should(BeFalse())
+		})
 
-	BeforeEach(func() {
-		id := "targetID"
-		metricIDs := []string{"someMetric"}
-		counterIDs := []string{"someCounter"}
-		tCounterIDs := []string{"totalCounter"}
-
-		testTarget, _ = target.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
-	})
-
-	It("should return false if measure is not unique", func() {
-		testTarget.CounterIDs = append(testTarget.CounterIDs, mockStr)
-		unique := testTarget.IsMeasureIDUnique(mockStr)
-		Ω(unique).Should(BeFalse())
-	})
-
-	It("should return true if measure is unique", func() {
-		unique := testTarget.IsMeasureIDUnique(mockStr)
-		Ω(unique).Should(BeTrue())
+		It("should return true if measure is unique", func() {
+			unique := testTarget.IsMeasureIDUnique(mockStr)
+			Ω(unique).Should(BeTrue())
+		})
 	})
 })
