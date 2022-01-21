@@ -6,6 +6,7 @@ endif
 
 GO				:= go
 GOBIN			:= $(GOPATH)/bin
+BASE            := $(GOPATH)/src/$(PACKAGE)
 COVERAGE_DIR	:= $(CURDIR)/coverage
 
 V = 0
@@ -19,13 +20,8 @@ default: tools dependencies check test
 
 $(GOBIN):
 	@mkdir -p $@
-
-# Avoid making tools dependencies.
-$(GOBIN)/%: | $(GOBIN) ; $(info $(M) installing $(PACKAGE)…)
-	$Q tmp=$$(mktemp -d); \
-	   env GO111MODULE=off GOPATH=$$tmp GOBIN=$(GOBIN) $(GO) get $(PACKAGE) \
-		|| ret=$$?; \
-	   rm -rf $$tmp ; exit $$ret
+$(GOBIN)/%: $(GOBIN) | $(BASE)
+	@[ -x $@ ] || echo "$(M)" Installing $* && go get $(PACKAGE)
 
 GOLINT = $(GOBIN)/golint
 $(GOBIN)/golint: PACKAGE=golang.org/x/lint/golint
@@ -108,8 +104,8 @@ fmt: ; $(info $(M) running gofmt…) @ ## Run gofmt on all files.
 
 .PHONY: clean
 clean: ; $(info $(M) cleaning…)	@ ## Cleanup everything.
-	@rm -f **/junit.xml **/**/junit.xml
-	@rm -f **/*.coverprofile **/**/*.coverprofile
+	@rm -f **/junit.xml internal/**/junit.xml
+	@rm -f **/*.coverprofile internal/**/*.coverprofile
 	@rm -rf $(COVERAGE_DIR)
 
 .PHONY: help
