@@ -21,7 +21,7 @@ default: tools dependencies check test
 $(GOBIN):
 	@mkdir -p $@
 $(GOBIN)/%: $(GOBIN) | $(BASE)
-	@[ -x $@ ] || echo "$(M)" Installing $* && go get $(PACKAGE)
+	@[ -x $@ ] || echo "$(M)" Installing $* && $(GO) get $(PACKAGE) 
 
 GOLINT = $(GOBIN)/golint
 $(GOBIN)/golint: PACKAGE=golang.org/x/lint/golint

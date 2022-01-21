@@ -1,7 +1,7 @@
 pipeline {
     agent {
         dockerfile {
-            label 'docker'
+            label 'master'
             args '-v /jenkins_home/tools:/jenkins_home/tools'
         }
     }
