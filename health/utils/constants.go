@@ -2,15 +2,15 @@ package utils
 
 // List of constant keys and values for health framework
 const (
-	SourceTypeKey     = "source-type"
 	DefaultSourceType = "zenoss.collection.health"
+	DefaultTargetType = "default"
 
 	TargetKey     = "target"
 	TargetTypeKey = "target-type"
-	SystemKey     = "system"
-	SystemTypeKey = "system-type"
+	SourceKey     = "source"
+	SourceTypeKey = "source-type"
 
-	DefaultTargetType = "default"
+	ZenossNameField = "name"
 
 	HealthyStatus   = "Healthy"
 	DegradeStatus   = "Degrade"
