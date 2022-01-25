@@ -59,6 +59,7 @@ func main() {
 	wg.Add(1)
 	go bus(wg)
 	wg.Wait()
+
 	frameworkStop()
 }
 

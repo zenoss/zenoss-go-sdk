@@ -35,18 +35,16 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 	measurementsCh := make(chan *targetMeasurement)
 	healthCh := make(chan *target.Health)
 	targetCh := make(chan *target.Target)
-	stopSig := make(chan struct{})
 
 	InitCollector(cfg.CollectionCycle, measurementsCh)
 
-	go m.Start(ctx, measurementsCh, healthCh, targetCh, stopSig)
+	go m.Start(ctx, measurementsCh, healthCh, targetCh)
 
-	go writer.Start(ctx, healthCh, targetCh, stopSig)
+	go writer.Start(ctx, healthCh, targetCh)
 
 	frameworkStop := func() {
-		close(stopSig)
-		writer.Shutdown()
 		m.Shutdown()
+		writer.Shutdown()
 	}
 
 	return frameworkStop
@@ -60,9 +58,8 @@ type Manager interface {
 	Start(
 		ctx context.Context, measureOut <-chan *targetMeasurement,
 		healthIn chan<- *target.Health, targetIn chan<- *target.Target,
-		stopSig <-chan struct{},
 	)
-
+	// Shutdown method closes manager's channels and terminates goroutines
 	Shutdown()
 	// AddTargets provides a simple interface to register monitored targets
 	AddTargets(targets []*target.Target)
@@ -72,10 +69,11 @@ type Manager interface {
 // You should init configuration and writer before and pass it here
 func NewManager(ctx context.Context, config *Config) Manager {
 	healthReg := newHealthRegistry()
-
+	stopSig := make(chan struct{})
 	return &healthManager{
 		registry: healthReg,
 		config:   config,
+		stopSig:  stopSig,
 		wg:       &sync.WaitGroup{},
 	}
 }
@@ -86,7 +84,7 @@ type healthManager struct {
 	config   *Config
 	healthIn chan<- *target.Health
 	targetIn chan<- *target.Target
-	stopSig  <-chan struct{}
+	stopSig  chan struct{}
 	wg       *sync.WaitGroup
 	started  bool
 }
@@ -94,11 +92,9 @@ type healthManager struct {
 func (hm *healthManager) Start(
 	ctx context.Context, measureOut <-chan *targetMeasurement,
 	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
-	stopSig <-chan struct{},
 ) {
 	hm.targetIn = targetIn
 	hm.healthIn = healthIn
-	hm.stopSig = stopSig
 
 	go hm.listenMeasurements(ctx, measureOut)
 
@@ -108,7 +104,7 @@ func (hm *healthManager) Start(
 }
 
 func (hm *healthManager) Shutdown() {
-	close(hm.targetIn)
+	close(hm.stopSig)
 	hm.wg.Wait()
 }
 

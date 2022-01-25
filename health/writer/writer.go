@@ -17,27 +17,31 @@ import (
 type HealthWriter interface {
 	// Start should be run in goroutine.
 	// It listens for healthIn channel and sends data to configured destinations
-	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target, stopSig <-chan struct{})
-
+	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target)
+	// Shutdown method gently terminates the writer
 	Shutdown()
 }
 
 // New creates a new HealthWriter instance.
 // Destinations should be initialized and passed here as a parameter
 func New(dests []Destination) HealthWriter {
-	return &writer{destinations: dests, wg: &sync.WaitGroup{}}
+	stopSig := make(chan struct{})
+	return &writer{
+		destinations: dests,
+		stopSig:      stopSig,
+		wg:           &sync.WaitGroup{},
+	}
 }
 
 type writer struct {
 	destinations []Destination
 	// we can also create and add some data transformers if
 	// health data should be changed somehow before send
-	wg *sync.WaitGroup
+	stopSig chan struct{}
+	wg      *sync.WaitGroup
 }
 
-func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target,
-	stopSig <-chan struct{},
-) {
+func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target) {
 	w.wg.Add(1)
 	defer w.wg.Done()
 
@@ -63,12 +67,13 @@ func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targ
 					log.GetLogger().Error().AnErr("error", err).Msg("Unable to register target")
 				}
 			}
-		case <-stopSig:
+		case <-w.stopSig:
 			return
 		}
 	}
 }
 
 func (w *writer) Shutdown() {
+	close(w.stopSig)
 	w.wg.Wait()
 }
