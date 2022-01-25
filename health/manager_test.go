@@ -2,529 +2,539 @@ package health_test
 
 import (
 	"context"
-	"errors"
-	"math/rand"
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
-	"github.com/stretchr/testify/mock"
 	"github.com/zenoss/zenoss-go-sdk/health"
-	"github.com/zenoss/zenoss-go-sdk/health/mocks"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
-	"github.com/zenoss/zenoss-go-sdk/health/writer"
 )
 
-func TestHealth(t *testing.T) {
-	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Health Manager Suite", []Reporter{junitReporter})
-}
+var _ = Describe("Health Manager", func() {
 
-var _ = Describe("Manager", func() {
+	var (
+		ctx     context.Context
+		manager health.Manager
 
-	const (
-		testTargetID = "test.target"
+		mesuresCh chan *health.TargetMeasurement
+		healthCh  chan *target.Health
+		targetCh  chan *target.Target
 
-		testMetric1  = "test.metric.1"
-		testMetric2  = "test.metric.2"
-		testCounter1 = "test.counter.1"
-		testCounter2 = "test.counter.2"
-		totalCounter = "total.counter"
-
-		wrongID = "wrong.ID"
-
-		cycle = 200 * time.Millisecond
+		testTargetID     = "test.target"
+		testMetric       = "test.metric"
+		testCounter      = "test.counter"
+		testTotalCounter = "total.counter"
 	)
 
-	Context("When collector is not initialized", func() {
-		It("GetCollector should return an error", func() {
-			collector, err := health.GetCollector()
-
-			Ω(collector).Should(BeNil())
-			Ω(err).Should(Equal(utils.ErrDeadCollector))
-		})
-	})
-
-	Context("Manager tests", func() {
-		var (
-			err       error
-			ctx       context.Context
-			cancel    context.CancelFunc
-			config    *health.Config
-			targets   []*target.Target
-			dest      *mocks.Destination
-			wr        writer.HealthWriter
-			manager   health.Manager
-			collector health.Collector
+	addTestTarget := func() {
+		tar, _ := target.New(
+			testTargetID, utils.DefaultTargetType, true,
+			[]string{testMetric},
+			[]string{testCounter},
+			[]string{testTotalCounter},
 		)
+		targets := []*target.Target{tar}
 
-		BeforeEach(func() {
-			ctx, cancel = context.WithCancel(context.Background())
+		manager.AddTargets(targets)
+	}
 
-			config = health.NewConfig()
-			config.CollectionCycle = cycle
+	Context("startup + shutdown", func() {
+		It("should start and stop by context cancel", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+
+			config := health.NewConfig()
+			config.CollectionCycle = 200 * time.Millisecond
 			// don't spam logs during the test
 			config.LogLevel = "fatal"
-
-			dest = &mocks.Destination{}
-			dest.On("Push", ctx, mock.Anything).Return(nil)
-			dest.On("Register", ctx, mock.Anything).Return(nil)
-
-			wr = writer.New([]writer.Destination{dest})
-			tar, _ := target.New(
-				testTargetID, "", true,
-				[]string{testMetric1, testMetric2},
-				[]string{testCounter1, testCounter2},
-				[]string{totalCounter},
-			)
-			targets = []*target.Target{tar}
-
-			manager = health.NewManager(ctx, config)
-			manager.AddTargets(targets)
-			go health.FrameworkStart(ctx, config, manager, wr)
-			time.Sleep(cycle / 2)
-
-			collector, err = health.GetCollector()
-			time.Sleep(cycle)
-		})
-
-		AfterEach(func() {
-			cancel()
-			time.Sleep(1 * time.Second)
-		})
-
-		It("collector should be not nil", func() {
-			Ω(collector).ShouldNot(BeNil())
-		})
-
-		Context("HeartBeat test", func() {
-			It("should push heartbeat to the registered target", func() {
-				go func() {
-					err = collector.HeartBeat(testTargetID)
-				}()
-				time.Sleep(3 * cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(len(dest.Calls) > 2).Should(BeTrue())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Heartbeat.Enabled).Should(BeTrue())
-				Ω(lastPush.Heartbeat.Beats).Should(BeTrue())
-			})
-		})
-
-		Context("AddToCounter test", func() {
-			It("should push counter change measure to the registered target", func() {
-				var counterIncr int32
-
-				counterIncr = 1
-				err = collector.AddToCounter(testTargetID, testCounter1, counterIncr)
-				time.Sleep(cycle)
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Counters[testCounter1]).Should(Equal(counterIncr))
-
-				counterIncr = 2
-				err = collector.AddToCounter(testTargetID, testCounter2, counterIncr)
-				time.Sleep(cycle)
-				lastPush = dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Counters[testCounter2]).Should(Equal(counterIncr))
-
-				counterIncr = 3
-				err = collector.AddToCounter(testTargetID, totalCounter, counterIncr)
-				time.Sleep(cycle)
-				lastPush = dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Counters[totalCounter]).Should(Equal(counterIncr))
-			})
-
-			// "Unable to update target counter" error check
-			It("should raise an error while updating unregistered counter", func() {
-				var counterIncr int32 = 4
-				err = collector.AddToCounter(testTargetID, wrongID, counterIncr)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				_, ok := lastPush.Counters[wrongID]
-
-				Ω(ok).Should(BeFalse())
-			})
-		})
-
-		Context("AddMetricValue test", func() {
-			It("should push metric measure to the registered target", func() {
-				var metricValue float64
-
-				metricValue = 1.1
-				err = collector.AddMetricValue(testTargetID, testMetric1, metricValue)
-				time.Sleep(cycle)
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Metrics[testMetric1]).Should(Equal(metricValue))
-
-				metricValue = 1.2
-				err = collector.AddMetricValue(testTargetID, testMetric2, metricValue)
-				time.Sleep(cycle)
-				lastPush = dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Metrics[testMetric2]).Should(Equal(metricValue))
-			})
-
-			// "Unable to update target metric" error check
-			It("should raise an error while updating unregistered metric", func() {
-				metricValue := 1.3
-				err = collector.AddMetricValue(testTargetID, wrongID, metricValue)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				_, ok := lastPush.Metrics[wrongID]
-
-				Ω(ok).Should(BeFalse())
-			})
-		})
-
-		Context("HealthMessage test", func() {
-			It("should push health-affecting message to the registered target", func() {
-				affectHealthMsg := target.NewMessage(
-					"Error msg",
-					errors.New("error"),
-					true, target.Unhealthy)
-
-				err = collector.HealthMessage(testTargetID, affectHealthMsg)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(lastPush.Messages[0]).Should(Equal(affectHealthMsg))
-			})
-
-			It("should push non-health-affecting message to the registered target", func() {
-				infoMsg := target.NewMessage(
-					"Info msg",
-					errors.New("info"),
-					false, target.Healthy)
-
-				err = collector.HealthMessage(testTargetID, infoMsg)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(lastPush.Messages[0]).Should(Equal(infoMsg))
-			})
-		})
-
-		Context("ChangeHealth test", func() {
-			It("should push updated health status to the registered target", func() {
-				err = collector.ChangeHealth(testTargetID, target.Degrade)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(lastPush.Status).Should(Equal(target.Degrade))
-			})
-
-			// TargetNotRegistered error check
-			It("should raise errTargetNotRegistered", func() {
-				err = collector.ChangeHealth(wrongID, target.Degrade)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).ShouldNot(Equal(wrongID))
-			})
-		})
-	})
-
-	Context("Manager with registration on collect enabled test", func() {
-		var (
-			err       error
-			ctx       context.Context
-			cancel    context.CancelFunc
-			config    *health.Config
-			targets   []*target.Target
-			dest      *mocks.Destination
-			wr        writer.HealthWriter
-			collector health.Collector
-		)
-
-		BeforeEach(func() {
-			ctx, cancel = context.WithCancel(context.Background())
-
-			config = health.NewConfig()
-			config.CollectionCycle = cycle
-			config.RegistrationOnCollect = true
-
-			dest = &mocks.Destination{}
-			dest.On("Push", ctx, mock.Anything).Return(nil)
-			dest.On("Register", ctx, mock.Anything).Return(nil)
-
-			wr = writer.New([]writer.Destination{dest})
-			tar, _ := target.New(
-				testTargetID, "", true,
-				[]string{testMetric1, testMetric2},
-				[]string{testCounter1, testCounter2},
-				[]string{totalCounter},
-			)
-			targets = []*target.Target{tar}
-
 			manager := health.NewManager(ctx, config)
 
-			manager.AddTargets(targets)
+			mesuresCh := make(chan *health.TargetMeasurement)
+			healthCh := make(chan *target.Health)
+			targetCh := make(chan *target.Target)
 
-			go health.FrameworkStart(ctx, config, manager, wr)
-			time.Sleep(cycle / 2) // let it init and start
-
-			collector, err = health.GetCollector()
-			time.Sleep(cycle)
-		})
-
-		AfterEach(func() {
+			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			Ω(manager.IsStarted()).Should(BeTrue())
 			cancel()
 			time.Sleep(1 * time.Second)
+			Ω(manager.IsStarted()).Should(BeFalse())
 		})
 
-		Context("Dynamic measure ID registration test", func() {
-			It("should register new counter id and push the measure", func() {
-				newMeasureId := "new.id.1"
-				var counterIncr int32 = 5
-				err = collector.AddToCounter(testTargetID, newMeasureId, counterIncr)
-				time.Sleep(cycle)
+		It("should start and stop by shutdown call", func() {
+			ctx := context.Background()
 
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Counters[newMeasureId]).Should(Equal(counterIncr))
-			})
-
-			It("should register new metric id and push the measure", func() {
-				newMeasureId := "new.id.2"
-				metricValue := 1.4
-				err = collector.AddMetricValue(testTargetID, newMeasureId, metricValue)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-
-				Ω(err).Should(BeNil())
-				Ω(lastPush.TargetID).Should(Equal(testTargetID))
-				Ω(lastPush.Metrics[newMeasureId]).Should(Equal(metricValue))
-			})
-
-			It("AddToCounter should raise errMeasureIDTaken", func() {
-				takenMeasureId := "new.id.3"
-				var counterIncr int32 = 6
-				metricValue := 1.5
-
-				err = collector.AddMetricValue(testTargetID, takenMeasureId, metricValue)
-				err = collector.AddToCounter(testTargetID, takenMeasureId, counterIncr)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				_, ok := lastPush.Counters[takenMeasureId]
-
-				Ω(ok).Should(BeFalse())
-			})
-
-			It("AddMetricValue should raise errMeasureIDTaken", func() {
-				takenMeasureId := "new.id.4"
-				var counterIncr int32 = 7
-				metricValue := 1.6
-
-				err = collector.AddToCounter(testTargetID, takenMeasureId, counterIncr)
-				err = collector.AddMetricValue(testTargetID, takenMeasureId, metricValue)
-				time.Sleep(cycle)
-
-				lastPush := dest.Calls[len(dest.Calls)-1].Arguments[1].(*target.Health)
-				_, ok := lastPush.Metrics[takenMeasureId]
-
-				Ω(ok).Should(BeFalse())
-			})
-		})
-
-		Context("Build target from measure test", func() {
-			It("should build target from HeartBeat measure", func() {
-				newTargetID := "new.target.1"
-
-				go func() {
-					err = collector.HeartBeat(newTargetID)
-				}()
-				time.Sleep(3 * cycle)
-
-				var newTargetPush *target.Health
-				for _, call := range dest.Calls {
-					if call.Method == "Push" {
-						push := call.Arguments[1].(*target.Health)
-						if push.TargetID == newTargetID && push.Heartbeat.Enabled == true {
-							newTargetPush = push
-						}
-					}
-				}
-
-				Ω(err).Should(BeNil())
-				Ω(newTargetPush).ShouldNot(BeNil())
-				Ω(newTargetPush.Heartbeat.Beats).Should(BeTrue())
-			})
-
-			It("should build target from counter change measure", func() {
-				newTargetID := "new.target.2"
-				newMeasureID := "new.id.5"
-				var counterIncr int32 = 8
-
-				err = collector.AddToCounter(newTargetID, newMeasureID, counterIncr)
-				time.Sleep(2 * cycle)
-
-				var newTargetPush *target.Health
-				for _, call := range dest.Calls {
-					if call.Method == "Push" {
-						push := call.Arguments[1].(*target.Health)
-						if push.TargetID == newTargetID && push.Counters[newMeasureID] == counterIncr {
-							newTargetPush = push
-						}
-					}
-				}
-
-				Ω(err).Should(BeNil())
-				Ω(newTargetPush).ShouldNot(BeNil())
-			})
-
-			It("should build target from metric measure", func() {
-				newTargetID := "new.target.3"
-				newMeasureID := "new.id.6"
-				metricValue := 1.7
-
-				err = collector.AddMetricValue(newTargetID, newMeasureID, metricValue)
-				time.Sleep(2 * cycle)
-
-				var newTargetPush *target.Health
-				for _, call := range dest.Calls {
-					if call.Method == "Push" {
-						push := call.Arguments[1].(*target.Health)
-						if push.TargetID == newTargetID && push.Metrics[newMeasureID] == metricValue {
-							newTargetPush = push
-						}
-					}
-				}
-
-				Ω(err).Should(BeNil())
-				Ω(newTargetPush).ShouldNot(BeNil())
-			})
-		})
-	})
-
-	Context("Dead collector test", func() {
-		var (
-			err       error
-			ctx       context.Context
-			cancel    context.CancelFunc
-			config    *health.Config
-			targets   []*target.Target
-			dest      *mocks.Destination
-			wr        writer.HealthWriter
-			collector health.Collector
-		)
-
-		BeforeEach(func() {
-			ctx, cancel = context.WithCancel(context.Background())
-
-			config = health.NewConfig()
-			config.CollectionCycle = cycle
-			config.RegistrationOnCollect = true
-
-			dest = &mocks.Destination{}
-			dest.On("Push", ctx, mock.Anything).Return(nil)
-			dest.On("Register", ctx, mock.Anything).Return(nil)
-
-			wr = writer.New([]writer.Destination{dest})
-			tar, _ := target.New(
-				testTargetID, "", true,
-				[]string{testMetric1, testMetric2},
-				[]string{testCounter1, testCounter2},
-				[]string{totalCounter},
-			)
-			targets = []*target.Target{tar}
-
+			config := health.NewConfig()
+			config.CollectionCycle = 200 * time.Millisecond
+			// don't spam logs during the test
+			config.LogLevel = "fatal"
 			manager := health.NewManager(ctx, config)
-			manager.AddTargets(targets)
-			go health.FrameworkStart(ctx, config, manager, wr)
-			time.Sleep(cycle / 2) // let it init and start
 
-			collector, err = health.GetCollector()
-			time.Sleep(cycle)
-		})
+			mesuresCh := make(chan *health.TargetMeasurement)
+			healthCh := make(chan *target.Health)
+			targetCh := make(chan *target.Target)
 
-		It("dead collector calls should return an error", func() {
-			cancel()
-			time.Sleep(1 * time.Second)
-
-			errDeadCollector := errors.New("Collector is not running")
-
-			err = collector.HeartBeat(testTargetID)
-			Ω(err).Should(Equal(errDeadCollector))
-
-			err = collector.AddToCounter(testTargetID, totalCounter, -2)
-			Ω(err).Should(Equal(errDeadCollector))
-
-			err = collector.AddMetricValue(testTargetID, testMetric1, 25.0)
-			Ω(err).Should(Equal(errDeadCollector))
-
-			err = collector.HealthMessage(testTargetID, &target.Message{})
-			Ω(err).Should(Equal(errDeadCollector))
-
-			err = collector.ChangeHealth(testTargetID, target.Healthy)
-			Ω(err).Should(Equal(errDeadCollector))
+			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			Ω(manager.IsStarted()).Should(BeTrue())
+			manager.Shutdown()
+			Ω(manager.IsStarted()).Should(BeFalse())
 		})
 	})
 
-	Context("frameworkStop test", func() {
-		var (
-			ctx     context.Context
-			config  *health.Config
-			targets []*target.Target
-			dest    *mocks.Destination
-			wr      writer.HealthWriter
-		)
-
-		It("should gracefully shut down", func() {
+	Context("dynamic registration off", func() {
+		BeforeEach(func() {
 			ctx = context.Background()
 
-			config = health.NewConfig()
-			config.CollectionCycle = cycle
+			config := health.NewConfig()
+			config.CollectionCycle = 200 * time.Millisecond
+			// don't spam logs during the test
+			config.LogLevel = "fatal"
+			manager = health.NewManager(ctx, config)
+
+			mesuresCh = make(chan *health.TargetMeasurement)
+			healthCh = make(chan *target.Health)
+			targetCh = make(chan *target.Target)
+		})
+
+		AfterEach(func() {
+			controller := make(chan struct{})
+			go func() {
+				<-healthCh
+				close(controller)
+			}()
+			close(mesuresCh)
+			manager.Shutdown()
+			<-controller
+		})
+
+		Context("adding targets", func() {
+			It("should add taret and push it on start", func() {
+				controller := make(chan struct{})
+				go func() {
+					actualTarget := <-targetCh
+					Ω(actualTarget).ShouldNot(BeNil())
+					Ω(actualTarget.ID).Should(Equal(testTargetID))
+					close(controller)
+				}()
+				addTestTarget()
+
+				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+				<-controller
+			})
+
+			It("should push taret on add target even if started", func() {
+				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+
+				controller := make(chan struct{})
+				go func() {
+					actualTarget := <-targetCh
+					Ω(actualTarget).ShouldNot(BeNil())
+					Ω(actualTarget.ID).Should(Equal(testTargetID))
+					close(controller)
+				}()
+				addTestTarget()
+				<-controller
+			})
+		})
+
+		Context("simple health measurements", func() {
+			BeforeEach(func() {
+				controller := make(chan struct{})
+				go func() {
+					testTarget := <-targetCh
+					Ω(testTarget.ID).Should(Equal(testTargetID))
+					close(controller)
+				}()
+				addTestTarget()
+				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+				<-controller
+			})
+
+			It("should update targets heartbeat", func() {
+				heartbeatMeasure := &health.TargetMeasurement{
+					TargetID:    testTargetID,
+					MeasureType: health.Heartbeat,
+				}
+				mesuresCh <- heartbeatMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Heartbeat.Beats).Should(BeTrue())
+				Ω(actualHealth.Heartbeat.Enabled).Should(BeTrue())
+			})
+
+			It("should update simple counter twice and cleanup it for the next time", func() {
+				counterValue := int32(2)
+				counterMeasure := &health.TargetMeasurement{
+					TargetID:      testTargetID,
+					MeasureID:     testCounter,
+					MeasureType:   health.CounterChange,
+					CounterChange: counterValue,
+				}
+				mesuresCh <- counterMeasure
+				mesuresCh <- counterMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Counters[testCounter]).Should(Equal(counterValue * 2))
+
+				actualHealth = <-healthCh
+				Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
+			})
+
+			It("should update total counter twice and don't cleanup after", func() {
+				counterValue := int32(2)
+				counterMeasure := &health.TargetMeasurement{
+					TargetID:      testTargetID,
+					MeasureID:     testTotalCounter,
+					MeasureType:   health.CounterChange,
+					CounterChange: counterValue,
+				}
+				mesuresCh <- counterMeasure
+				mesuresCh <- counterMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(counterValue * 2))
+
+				actualHealth = <-healthCh
+				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(counterValue * 2))
+			})
+
+			It("should calculate metric value and cleanup after the cycle", func() {
+				metricValue1 := float64(2)
+				metricValue2 := float64(6.4)
+				metricMeasure := &health.TargetMeasurement{
+					TargetID:    testTargetID,
+					MeasureID:   testMetric,
+					MeasureType: health.Metric,
+					MetricValue: metricValue1,
+				}
+				mesuresCh <- metricMeasure
+				metricMeasure = &health.TargetMeasurement{
+					TargetID:    testTargetID,
+					MeasureID:   testMetric,
+					MeasureType: health.Metric,
+					MetricValue: metricValue2,
+				}
+				mesuresCh <- metricMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Metrics[testMetric]).Should(Equal((metricValue1 + metricValue2) / 2))
+
+				actualHealth = <-healthCh
+				Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
+			})
+
+			It("should forward message that affects health and cleanup after the cycle", func() {
+				summary := "mock"
+				msg := &health.TargetMeasurement{
+					TargetID:    testTargetID,
+					MeasureType: health.Message,
+					Message: &target.Message{
+						Summary:      summary,
+						AffectHealth: true,
+						HealthStatus: target.Unhealthy,
+					},
+				}
+				mesuresCh <- msg
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Status).Should(Equal(target.Unhealthy))
+				actualMsg := actualHealth.Messages[0]
+				Ω(actualMsg.HealthStatus).Should(Equal(target.Unhealthy))
+				Ω(actualMsg.Summary).Should(Equal(summary))
+
+				actualHealth = <-healthCh
+				Ω(len(actualHealth.Messages)).Should(Equal(0))
+				Ω(actualHealth.Status).Should(Equal(target.Unhealthy))
+			})
+
+			It("should forward message that don't affect health", func() {
+				summary := "mock"
+				msg := &health.TargetMeasurement{
+					TargetID:    testTargetID,
+					MeasureType: health.Message,
+					Message: &target.Message{
+						Summary:      summary,
+						AffectHealth: false,
+						HealthStatus: target.Unhealthy,
+					},
+				}
+				mesuresCh <- msg
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Status).Should(Equal(target.Healthy))
+				Ω(actualHealth.Messages[0].Summary).Should(Equal(summary))
+			})
+
+			It("should change health status if it is called manually and shouldn't cleanup after", func() {
+				hStatus := &health.TargetMeasurement{
+					TargetID:     testTargetID,
+					MeasureType:  health.HealthStatus,
+					HealthStatus: target.Degrade,
+				}
+				mesuresCh <- hStatus
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Status).Should(Equal(target.Degrade))
+
+				actualHealth = <-healthCh
+				Ω(actualHealth.Status).Should(Equal(target.Degrade))
+			})
+		})
+
+		Context("missing target or its component", func() {
+			BeforeEach(func() {
+				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			})
+
+			It("the first push shouldn't affect anything", func() {
+				counterValue := int32(2)
+				counterMeasure := &health.TargetMeasurement{
+					TargetID:      testTargetID,
+					MeasureType:   health.CounterChange,
+					MeasureID:     testTotalCounter,
+					CounterChange: counterValue,
+				}
+				mesuresCh <- counterMeasure
+
+				go func() {
+					testTarget := <-targetCh
+					Ω(testTarget.ID).Should(Equal(testTargetID))
+				}()
+				addTestTarget()
+
+				mesuresCh <- counterMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(counterValue))
+			})
+
+			It("the counter with unregistered id shouldn't affect anything", func() {
+				go func() {
+					testTarget := <-targetCh
+					Ω(testTarget.ID).Should(Equal(testTargetID))
+				}()
+				addTestTarget()
+				fakeID := "fakerID"
+
+				counterValue := int32(2)
+				counterMeasure := &health.TargetMeasurement{
+					TargetID:      testTargetID,
+					MeasureType:   health.CounterChange,
+					MeasureID:     fakeID,
+					CounterChange: counterValue,
+				}
+				mesuresCh <- counterMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(int32(0)))
+				_, ok := actualHealth.Counters[fakeID]
+				Ω(ok).Should(BeFalse())
+			})
+
+			It("the metric with unregistered id shouldn't affect anything", func() {
+				go func() {
+					testTarget := <-targetCh
+					Ω(testTarget.ID).Should(Equal(testTargetID))
+				}()
+				addTestTarget()
+				fakeID := "fakerID"
+
+				counterValue := float64(2)
+				counterMeasure := &health.TargetMeasurement{
+					TargetID:    testTargetID,
+					MeasureType: health.Metric,
+					MeasureID:   fakeID,
+					MetricValue: counterValue,
+				}
+				mesuresCh <- counterMeasure
+
+				actualHealth := <-healthCh
+				Ω(actualHealth).ShouldNot(BeNil())
+				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
+				_, ok := actualHealth.Metrics[fakeID]
+				Ω(ok).Should(BeFalse())
+			})
+		})
+	})
+
+	Context("dynamic registration on", func() {
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			config := health.NewConfig()
+			config.CollectionCycle = 200 * time.Millisecond
 			config.RegistrationOnCollect = true
+			// don't spam logs during the test
+			config.LogLevel = "fatal"
+			manager = health.NewManager(ctx, config)
 
-			dest = &mocks.Destination{}
-			dest.On("Push", ctx, mock.Anything).Return(nil)
-			dest.On("Register", ctx, mock.Anything).Return(nil)
+			mesuresCh = make(chan *health.TargetMeasurement)
+			healthCh = make(chan *target.Health)
+			targetCh = make(chan *target.Target)
 
-			wr = writer.New([]writer.Destination{dest})
-			tar, _ := target.New(
-				testTargetID, "", true,
-				[]string{testMetric1, testMetric2},
-				[]string{testCounter1, testCounter2},
-				[]string{totalCounter},
-			)
-			targets = []*target.Target{tar}
+			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+		})
 
-			manager := health.NewManager(ctx, config)
-			manager.AddTargets(targets)
-			fameworkStop := health.FrameworkStart(ctx, config, manager, wr)
+		AfterEach(func() {
+			go func() {
+				<-healthCh
+			}()
+			close(mesuresCh)
+			manager.Shutdown()
+		})
 
-			fameworkStop()
+		It("should add the target dynamicaly by heartbeat", func() {
+			heartbeatMeasure := &health.TargetMeasurement{
+				TargetID:    testTargetID,
+				MeasureType: health.Heartbeat,
+			}
+			mesuresCh <- heartbeatMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Heartbeat.Beats).Should(BeTrue())
+			Ω(actualHealth.Heartbeat.Enabled).Should(BeTrue())
+		})
+
+		It("should add the target dynamicaly by metric", func() {
+			metricValue := float64(6.4)
+			metricMeasure := &health.TargetMeasurement{
+				TargetID:    testTargetID,
+				MeasureID:   testMetric,
+				MeasureType: health.Metric,
+				MetricValue: metricValue,
+			}
+			mesuresCh <- metricMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Metrics[testMetric]).Should(Equal(metricValue))
+		})
+
+		It("should add the target dynamicaly by counter", func() {
+			counterValue := int32(2)
+			counterMeasure := &health.TargetMeasurement{
+				TargetID:      testTargetID,
+				MeasureID:     testCounter,
+				MeasureType:   health.CounterChange,
+				CounterChange: counterValue,
+			}
+			mesuresCh <- counterMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Counters[testCounter]).Should(Equal(counterValue))
+		})
+
+		It("shouldn't add the counter if id is not unique per target", func() {
+			go func() {
+				testTarget := <-targetCh
+				Ω(testTarget.ID).Should(Equal(testTargetID))
+			}()
+			addTestTarget()
+			counterValue := int32(2)
+			counterMeasure := &health.TargetMeasurement{
+				TargetID:      testTargetID,
+				MeasureID:     testMetric, // here we use metric id but its already taken
+				MeasureType:   health.CounterChange,
+				CounterChange: counterValue,
+			}
+			mesuresCh <- counterMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Counters[testMetric]).Should(Equal(int32(0)))
+			Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
+		})
+
+		It("should add the counter if id is unique per target", func() {
+			newMeasureID := "mocked.id"
+			go func() {
+				testTarget := <-targetCh
+				Ω(testTarget.ID).Should(Equal(testTargetID))
+			}()
+			addTestTarget()
+			counterValue := int32(3)
+			counterMeasure := &health.TargetMeasurement{
+				TargetID:      testTargetID,
+				MeasureID:     newMeasureID,
+				MeasureType:   health.CounterChange,
+				CounterChange: counterValue,
+			}
+			mesuresCh <- counterMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
+			Ω(actualHealth.Counters[newMeasureID]).Should(Equal(counterValue))
+		})
+
+		It("shouldn't add the metric if id is not unique per target", func() {
+			go func() {
+				testTarget := <-targetCh
+				Ω(testTarget.ID).Should(Equal(testTargetID))
+			}()
+			addTestTarget()
+			metricValue := float64(2)
+			metricMeasure := &health.TargetMeasurement{
+				TargetID:    testTargetID,
+				MeasureID:   testCounter, // here we use counter id but its already taken
+				MeasureType: health.Metric,
+				MetricValue: metricValue,
+			}
+			mesuresCh <- metricMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Metrics[testCounter]).Should(Equal(float64(0)))
+			Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
+		})
+
+		It("should add the metric if id is unique per target", func() {
+			newMeasureID := "mocked.id"
+			go func() {
+				testTarget := <-targetCh
+				Ω(testTarget.ID).Should(Equal(testTargetID))
+			}()
+			addTestTarget()
+			metricValue := float64(2.3)
+			metricMeasure := &health.TargetMeasurement{
+				TargetID:    testTargetID,
+				MeasureID:   newMeasureID,
+				MeasureType: health.Metric,
+				MetricValue: metricValue,
+			}
+			mesuresCh <- metricMeasure
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
+			Ω(actualHealth.Metrics[newMeasureID]).Should(Equal(metricValue))
 		})
 	})
 })
