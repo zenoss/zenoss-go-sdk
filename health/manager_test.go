@@ -490,4 +490,41 @@ var _ = Describe("Manager", func() {
 			Ω(err).Should(Equal(errDeadCollector))
 		})
 	})
+
+	Context("frameworkStop test", func() {
+		var (
+			ctx     context.Context
+			config  *health.Config
+			targets []*target.Target
+			dest    *mocks.Destination
+			wr      writer.HealthWriter
+		)
+
+		It("should gracefully shut down", func() {
+			ctx = context.Background()
+
+			config = health.NewConfig()
+			config.CollectionCycle = cycle
+			config.RegistrationOnCollect = true
+
+			dest = &mocks.Destination{}
+			dest.On("Push", ctx, mock.Anything).Return(nil)
+			dest.On("Register", ctx, mock.Anything).Return(nil)
+
+			wr = writer.New([]writer.Destination{dest})
+			tar, _ := target.New(
+				testTargetID, "", true,
+				[]string{testMetric1, testMetric2},
+				[]string{testCounter1, testCounter2},
+				[]string{totalCounter},
+			)
+			targets = []*target.Target{tar}
+
+			manager := health.NewManager(ctx, config)
+			manager.AddTargets(targets)
+			fameworkStop := health.FrameworkStart(ctx, config, manager, wr)
+
+			fameworkStop()
+		})
+	})
 })
