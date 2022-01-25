@@ -25,9 +25,12 @@ import (
 	sdk_utils "github.com/zenoss/zenoss-go-sdk/utils"
 )
 
+// FrameworkStop synchronously terminates all framework subprocesses
+type FrameworkStop func()
+
 // FrameworkStart initializes dependencies and starts health monitoring
 // If you call it in goroutine, you need to wait a little bit for collector to initialize
-func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) func() {
+func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) FrameworkStop {
 	if cfg.LogLevel != "" {
 		logging.SetLogLevel(cfg.LogLevel)
 	}
@@ -42,12 +45,10 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 	go writer.Start(ctx, healthCh, targetCh)
 
-	frameworkStop := func() {
+	return func() {
 		m.Shutdown()
 		writer.Shutdown()
 	}
-
-	return frameworkStop
 }
 
 // Manager keeps all information about targets and provides a functionality
