@@ -68,13 +68,16 @@ func bus(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	log.Info().Msg("Bus is started")
-	collector, err := health.GetCollector()
+	collector, err := health.GetCollectorSingleton()
 	if err != nil {
 		panic(err)
 	}
 	sleeps := 2 * time.Second
 
-	go collector.HeartBeat(mercedesTarget)
+	hbCancel, err := collector.HeartBeat(mercedesTarget)
+	if err != nil {
+		panic(err)
+	}
 
 	// just started
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 0)
@@ -119,5 +122,6 @@ func bus(wg *sync.WaitGroup) {
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 25.0)
 
 	time.Sleep(sleeps)
+	hbCancel()
 	log.Info().Msg("Bus is keep moving but we don't need to monitor it anymore")
 }

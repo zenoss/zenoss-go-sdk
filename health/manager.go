@@ -35,17 +35,24 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 		logging.SetLogLevel(cfg.LogLevel)
 	}
 
-	measurementsCh := make(chan *targetMeasurement)
+	measurementsCh := make(chan *TargetMeasurement)
 	healthCh := make(chan *target.Health)
 	targetCh := make(chan *target.Target)
 
-	InitCollector(cfg.CollectionCycle, measurementsCh)
+	c := NewCollector(cfg.CollectionCycle, measurementsCh)
+	SetCollectorSingleton(c)
+
+	go func() {
+		<-ctx.Done()
+		StopCollectorSingleton()
+	}()
 
 	go m.Start(ctx, measurementsCh, healthCh, targetCh)
 
 	go writer.Start(ctx, healthCh, targetCh)
 
 	return func() {
+		StopCollectorSingleton()
 		m.Shutdown()
 		writer.Shutdown()
 	}
@@ -55,13 +62,17 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 // to initialize collector, writer and communication channels
 type Manager interface {
 	// Start method should initialize collector with it's configuration and
-	// define a method to send data to a writer
+	// define a method to send data to a writer. Remember that healthIn and targetIn channels
+	// require readers and measureOut requires a writer.
+	// Make sure to close measureOut before manager shutdown to not lose any data.
 	Start(
-		ctx context.Context, measureOut <-chan *targetMeasurement,
+		ctx context.Context, measureOut <-chan *TargetMeasurement,
 		healthIn chan<- *target.Health, targetIn chan<- *target.Target,
 	)
 	// Shutdown method closes manager's channels and terminates goroutines
 	Shutdown()
+	// IsStarted return the status of the manager
+	IsStarted() bool
 	// AddTargets provides a simple interface to register monitored targets
 	AddTargets(targets []*target.Target)
 }
@@ -70,12 +81,11 @@ type Manager interface {
 // You should init configuration and writer before and pass it here
 func NewManager(ctx context.Context, config *Config) Manager {
 	healthReg := newHealthRegistry()
-	stopSig := make(chan struct{})
 	return &healthManager{
 		registry: healthReg,
 		config:   config,
-		stopSig:  stopSig,
 		wg:       &sync.WaitGroup{},
+		stopWait: make(chan struct{}),
 	}
 }
 
@@ -85,28 +95,54 @@ type healthManager struct {
 	config   *Config
 	healthIn chan<- *target.Health
 	targetIn chan<- *target.Target
-	stopSig  chan struct{}
-	wg       *sync.WaitGroup
-	started  bool
+
+	// channel that block shutdown function from return until manager is stopped
+	stopWait chan struct{}
+	// channel that used by shutdown call to stop the manager
+	stopSig chan struct{}
+	// used to wait for manager processes to stop so we can mark started as false in a right time
+	wg      *sync.WaitGroup
+	started bool
 }
 
 func (hm *healthManager) Start(
-	ctx context.Context, measureOut <-chan *targetMeasurement,
+	ctx context.Context, measureOut <-chan *TargetMeasurement,
 	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
 ) {
 	hm.targetIn = targetIn
 	hm.healthIn = healthIn
+	hm.stopSig = make(chan struct{})
 
-	go hm.listenMeasurements(ctx, measureOut)
+	hm.wg.Add(1)
+	go func() {
+		defer hm.wg.Done()
+		hm.listenMeasurements(ctx, measureOut)
+	}()
 
-	go hm.healthForwarder(ctx, healthIn)
-	hm.sendTargetsInfo() // if some targets where added before start we need to register them
+	hm.wg.Add(1)
+	go func() {
+		defer hm.wg.Done()
+		go hm.healthForwarder(ctx, healthIn)
+	}()
+
 	hm.started = true
+	go func() {
+		hm.wg.Wait()
+		hm.started = false
+		hm.stopWait <- struct{}{}
+	}()
+
+	hm.sendTargetsInfo() // if some targets where added before start we need to register them
 }
 
 func (hm *healthManager) Shutdown() {
 	close(hm.stopSig)
-	hm.wg.Wait()
+	close(hm.targetIn)
+	<-hm.stopWait
+}
+
+func (hm *healthManager) IsStarted() bool {
+	return hm.started
 }
 
 func (hm *healthManager) AddTargets(targets []*target.Target) {
@@ -114,7 +150,7 @@ func (hm *healthManager) AddTargets(targets []*target.Target) {
 	defer hm.registry.unlock()
 
 	for _, newTarget := range targets {
-		hm.registry.setRawHealthForTarget(newRawHealth(newTarget, newTarget.MetricIDs))
+		hm.registry.setRawHealthForTarget(newRawHealth(newTarget))
 		if hm.started {
 			hm.targetIn <- newTarget
 		}
@@ -128,38 +164,36 @@ func (hm *healthManager) sendTargetsInfo() {
 }
 
 // Health Manager listens for data from collector and stores it in a registry
-func (hm *healthManager) listenMeasurements(ctx context.Context, measurements <-chan *targetMeasurement) {
-	hm.wg.Add(1)
+func (hm *healthManager) listenMeasurements(ctx context.Context, measurements <-chan *TargetMeasurement) {
 	log := logging.GetLogger()
 	log.Info().Msg("Start to listen for collected measurements")
-	defer func() {
-		log.Info().Msg("Finish listening for measurements from collector")
-		hm.wg.Done()
-	}()
+	defer func() { log.Info().Msg("Finish listening for measurements from collector") }()
 	for {
 		select {
-		case measurement := <-measurements:
+		case measurement, more := <-measurements:
+			if !more {
+				log.Warn().Msg("Measurements channel closed. Stop listening")
+				return
+			}
 			err := hm.updateTargetHealthData(measurement)
 			if err != nil {
-				log.Error().AnErr("error", err).Msgf("Unable to update target with id %s", measurement.targetID)
+				log.Error().AnErr("error", err).Msgf("Unable to update target with id %s", measurement.TargetID)
 			}
 		case <-hm.stopSig:
-			ShutDownCollector()
 			return
 		case <-ctx.Done():
-			ShutDownCollector()
 			return
 		}
 	}
 }
 
-func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) error {
+func (hm *healthManager) updateTargetHealthData(measure *TargetMeasurement) error {
 	var err error
 
 	hm.registry.lock()
 	defer hm.registry.unlock()
 
-	targetHealth, ok := hm.registry.getRawHealthForTarget(measure.targetID)
+	targetHealth, ok := hm.registry.getRawHealthForTarget(measure.TargetID)
 	if !ok {
 		if !hm.config.RegistrationOnCollect {
 			return utils.ErrTargetNotRegistered
@@ -171,90 +205,90 @@ func (hm *healthManager) updateTargetHealthData(measure *targetMeasurement) erro
 		hm.registry.setRawHealthForTarget(targetHealth)
 	}
 
-	switch measure.measureType {
-	case heartbeat:
+	switch measure.MeasureType {
+	case Heartbeat:
 		targetHealth.heartBeat = true
-	case metric:
+	case Metric:
 		err := hm.updateTargetsMetric(targetHealth, measure)
 		if err != nil {
 			return fmt.Errorf("Unable to update target metric: %w", err)
 		}
-	case counterChange:
+	case CounterChange:
 		err := hm.updateTargetsCounter(targetHealth, measure)
 		if err != nil {
 			return fmt.Errorf("Unable to update target counter: %w", err)
 		}
-	case message:
-		if measure.message.AffectHealth {
-			targetHealth.status = measure.message.HealthStatus
+	case Message:
+		if measure.Message.AffectHealth {
+			targetHealth.status = measure.Message.HealthStatus
 		}
-		targetHealth.messages = append(targetHealth.messages, measure.message)
-	case healthStatus:
-		targetHealth.status = measure.healthStatus
+		targetHealth.messages = append(targetHealth.messages, measure.Message)
+	case HealthStatus:
+		targetHealth.status = measure.HealthStatus
 	}
 
 	debugTargetMeasure(measure)
 	return nil
 }
 
-func (hm *healthManager) updateTargetsMetric(tHealth *rawHealth, measure *targetMeasurement) error {
-	if !sdk_utils.ListContainsString(tHealth.target.MetricIDs, measure.measureID) {
+func (hm *healthManager) updateTargetsMetric(tHealth *rawHealth, measure *TargetMeasurement) error {
+	if !sdk_utils.ListContainsString(tHealth.target.MetricIDs, measure.MeasureID) {
 		if !hm.config.RegistrationOnCollect {
 			return utils.ErrMetricNotRegistered
 		}
-		if !tHealth.target.IsMeasureIDUnique(measure.measureID) {
+		if !tHealth.target.IsMeasureIDUnique(measure.MeasureID) {
 			return utils.ErrMeasureIDTaken
 		}
-		tHealth.target.MetricIDs = append(tHealth.target.MetricIDs, measure.measureID)
-		tHealth.rawMetrics[measure.measureID] = []float64{measure.metricValue}
+		tHealth.target.MetricIDs = append(tHealth.target.MetricIDs, measure.MeasureID)
+		tHealth.rawMetrics[measure.MeasureID] = []float64{measure.MetricValue}
 	} else {
-		tHealth.rawMetrics[measure.measureID] = append(
-			tHealth.rawMetrics[measure.measureID],
-			measure.metricValue,
+		tHealth.rawMetrics[measure.MeasureID] = append(
+			tHealth.rawMetrics[measure.MeasureID],
+			measure.MetricValue,
 		)
 	}
 	return nil
 }
 
-func (hm *healthManager) updateTargetsCounter(tHealth *rawHealth, measure *targetMeasurement) error {
-	if sdk_utils.ListContainsString(tHealth.target.TotalCounterIDs, measure.measureID) {
-		tHealth.totalCounters[measure.measureID] += measure.counterChange
+func (hm *healthManager) updateTargetsCounter(tHealth *rawHealth, measure *TargetMeasurement) error {
+	if sdk_utils.ListContainsString(tHealth.target.TotalCounterIDs, measure.MeasureID) {
+		tHealth.totalCounters[measure.MeasureID] += measure.CounterChange
 	} else {
-		if !sdk_utils.ListContainsString(tHealth.target.CounterIDs, measure.measureID) {
+		if !sdk_utils.ListContainsString(tHealth.target.CounterIDs, measure.MeasureID) {
 			if !hm.config.RegistrationOnCollect {
 				return utils.ErrCounterNotRegistered
 			}
-			if !tHealth.target.IsMeasureIDUnique(measure.measureID) {
+			if !tHealth.target.IsMeasureIDUnique(measure.MeasureID) {
 				return utils.ErrMeasureIDTaken
 			}
-			tHealth.target.CounterIDs = append(tHealth.target.CounterIDs, measure.measureID)
+			tHealth.target.CounterIDs = append(tHealth.target.CounterIDs, measure.MeasureID)
 		}
-		tHealth.counters[measure.measureID] += measure.counterChange
+		tHealth.counters[measure.MeasureID] += measure.CounterChange
 	}
 	return nil
 }
 
-func (hm *healthManager) buildTargetFromMeasure(measure *targetMeasurement) (*rawHealth, error) {
+func (hm *healthManager) buildTargetFromMeasure(measure *TargetMeasurement) (*rawHealth, error) {
 	var enableHeartbeat bool
 	metricIDs := make([]string, 0)
 	counterIDs := make([]string, 0)
 	totalCounterIDs := make([]string, 0)
-	switch measure.measureType {
-	case heartbeat:
+	switch measure.MeasureType {
+	case Heartbeat:
 		enableHeartbeat = true
-	case metric:
-		metricIDs = []string{measure.measureID}
-	case counterChange:
-		counterIDs = []string{measure.measureID}
+	case Metric:
+		metricIDs = []string{measure.MeasureID}
+	case CounterChange:
+		counterIDs = []string{measure.MeasureID}
 	}
 	target, err := target.New(
-		measure.targetID, utils.DefaultTargetType, enableHeartbeat,
+		measure.TargetID, utils.DefaultTargetType, enableHeartbeat,
 		metricIDs, counterIDs, totalCounterIDs,
 	)
-	if err != nil {
+	if err != nil { // shouldn't ever happen here
 		return nil, err
 	}
-	return newRawHealth(target, metricIDs), nil
+	return newRawHealth(target), nil
 }
 
 // Calculates raw health data from the registry and forwards all health data to the writer once per cycle
@@ -333,27 +367,27 @@ func (hm *healthManager) cleanHealthValues(rawHealth *rawHealth) {
 }
 
 // methods that help with debug logging functionality
-func debugTargetMeasure(measure *targetMeasurement) {
+func debugTargetMeasure(measure *TargetMeasurement) {
 	log := logging.GetLogger()
-	switch measure.measureType {
-	case heartbeat:
-		log.Debug().Msgf("Got heartbeat from %s target", measure.targetID)
-	case metric:
+	switch measure.MeasureType {
+	case Heartbeat:
+		log.Debug().Msgf("Got heartbeat from %s target", measure.TargetID)
+	case Metric:
 		log.Debug().Msgf("Got metric %s with %f value from %s target",
-			measure.measureID, measure.metricValue, measure.targetID)
-	case counterChange:
+			measure.MeasureID, measure.MetricValue, measure.TargetID)
+	case CounterChange:
 		log.Debug().Msgf("Got update for %s counter with %d value from %s target",
-			measure.measureID, measure.counterChange, measure.targetID)
-	case message:
-		if measure.message.AffectHealth {
+			measure.MeasureID, measure.CounterChange, measure.TargetID)
+	case Message:
+		if measure.Message.AffectHealth {
 			log.Debug().Msgf("Got message that affects health from %s target: status=%s, msg=%s, error.msg=%s",
-				measure.measureID, measure.message.HealthStatus, measure.message.Summary, measure.message.Error)
+				measure.MeasureID, measure.Message.HealthStatus, measure.Message.Summary, measure.Message.Error)
 		} else {
 			log.Debug().Msgf("Got message that doesn't affect health from %s target: msg=%s, error.msg=%s",
-				measure.measureID, measure.message.Summary, measure.message.Error)
+				measure.MeasureID, measure.Message.Summary, measure.Message.Error)
 		}
-	case healthStatus:
-		log.Debug().Msgf("Got health status update from %s target. %s", measure.targetID, measure.healthStatus)
+	case HealthStatus:
+		log.Debug().Msgf("Got health status update from %s target. %s", measure.TargetID, measure.HealthStatus)
 	}
 }
 

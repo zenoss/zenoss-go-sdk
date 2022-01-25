@@ -3,20 +3,20 @@ package health
 import (
 	"sync"
 
-	t "github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/target"
 )
 
-func newRawHealth(target *t.Target, metricIDs []string) *rawHealth {
+func newRawHealth(t *target.Target) *rawHealth {
 	tHealth := &rawHealth{
-		target:        target,
-		status:        t.Healthy,
+		target:        t,
+		status:        target.Healthy,
 		heartBeat:     false,
 		counters:      make(map[string]int32),
 		totalCounters: make(map[string]int32),
 		rawMetrics:    make(map[string][]float64),
-		messages:      make([]*t.Message, 0),
+		messages:      make([]*target.Message, 0),
 	}
-	for _, metricID := range metricIDs {
+	for _, metricID := range t.MetricIDs {
 		tHealth.rawMetrics[metricID] = make([]float64, 0)
 	}
 	return tHealth
@@ -24,13 +24,13 @@ func newRawHealth(target *t.Target, metricIDs []string) *rawHealth {
 
 // rawHealth is a struct that keeps target information together with raw target health
 type rawHealth struct {
-	target        *t.Target
-	status        t.HealthStatus
+	target        *target.Target
+	status        target.HealthStatus
 	heartBeat     bool
 	counters      map[string]int32
 	totalCounters map[string]int32
 	rawMetrics    map[string][]float64
-	messages      []*t.Message
+	messages      []*target.Message
 }
 
 // healthRegistry keeps raw health data and provides an interface to get and update it
@@ -75,31 +75,4 @@ func (reg *memRegistry) setRawHealthForTarget(rawTargetHealth *rawHealth) {
 
 func (reg *memRegistry) getRawHealthMap() map[string]*rawHealth {
 	return reg.rawHealth
-}
-
-type measureType int
-
-const (
-	_ measureType = iota
-	healthStatus
-	heartbeat
-	counterChange
-	metric
-	message
-)
-
-// targetMeasurement is used by collector to send data.
-// You should define a measureType so manager will know what field it should looking for
-// Can be splitted into different structs and wrapped with the one interface in case
-// if we will have to many different measure types (should save us some ram)
-type targetMeasurement struct {
-	targetID    string
-	measureType measureType
-
-	// actual measurement fields
-	healthStatus  t.HealthStatus
-	message       *t.Message
-	counterChange int32
-	metricValue   float64
-	measureID     string // used for both metrics and counters
 }
