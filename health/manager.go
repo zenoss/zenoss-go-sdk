@@ -15,6 +15,7 @@ package health
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
@@ -26,7 +27,7 @@ import (
 
 // FrameworkStart initializes dependencies and starts health monitoring
 // If you call it in goroutine, you need to wait a little bit for collector to initialize
-func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) {
+func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.HealthWriter) func() {
 	if cfg.LogLevel != "" {
 		logging.SetLogLevel(cfg.LogLevel)
 	}
@@ -34,12 +35,21 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 	measurementsCh := make(chan *targetMeasurement)
 	healthCh := make(chan *target.Health)
 	targetCh := make(chan *target.Target)
+	stopSig := make(chan struct{})
 
 	InitCollector(cfg.CollectionCycle, measurementsCh)
 
-	go m.Start(ctx, measurementsCh, healthCh, targetCh)
+	go m.Start(ctx, measurementsCh, healthCh, targetCh, stopSig)
 
-	go writer.Start(ctx, healthCh, targetCh)
+	go writer.Start(ctx, healthCh, targetCh, stopSig)
+
+	frameworkStop := func() {
+		close(stopSig)
+		writer.Shutdown()
+		m.Shutdown()
+	}
+
+	return frameworkStop
 }
 
 // Manager keeps all information about targets and provides a functionality
@@ -50,7 +60,10 @@ type Manager interface {
 	Start(
 		ctx context.Context, measureOut <-chan *targetMeasurement,
 		healthIn chan<- *target.Health, targetIn chan<- *target.Target,
+		stopSig <-chan struct{},
 	)
+
+	Shutdown()
 	// AddTargets provides a simple interface to register monitored targets
 	AddTargets(targets []*target.Target)
 }
@@ -63,6 +76,7 @@ func NewManager(ctx context.Context, config *Config) Manager {
 	return &healthManager{
 		registry: healthReg,
 		config:   config,
+		wg:       &sync.WaitGroup{},
 	}
 }
 
@@ -72,20 +86,30 @@ type healthManager struct {
 	config   *Config
 	healthIn chan<- *target.Health
 	targetIn chan<- *target.Target
+	stopSig  <-chan struct{}
+	wg       *sync.WaitGroup
 	started  bool
 }
 
 func (hm *healthManager) Start(
 	ctx context.Context, measureOut <-chan *targetMeasurement,
 	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
+	stopSig <-chan struct{},
 ) {
 	hm.targetIn = targetIn
 	hm.healthIn = healthIn
+	hm.stopSig = stopSig
+
 	go hm.listenMeasurements(ctx, measureOut)
 
 	go hm.healthForwarder(ctx, healthIn)
 	hm.sendTargetsInfo() // if some targets where added before start we need to register them
 	hm.started = true
+}
+
+func (hm *healthManager) Shutdown() {
+	close(hm.targetIn)
+	hm.wg.Wait()
 }
 
 func (hm *healthManager) AddTargets(targets []*target.Target) {
@@ -108,9 +132,13 @@ func (hm *healthManager) sendTargetsInfo() {
 
 // Health Manager listens for data from collector and stores it in a registry
 func (hm *healthManager) listenMeasurements(ctx context.Context, measurements <-chan *targetMeasurement) {
+	hm.wg.Add(1)
 	log := logging.GetLogger()
 	log.Info().Msg("Start to listen for collected measurements")
-	defer log.Info().Msg("Finish listening for measurements from collector")
+	defer func() {
+		log.Info().Msg("Finish listening for measurements from collector")
+		hm.wg.Done()
+	}()
 	for {
 		select {
 		case measurement := <-measurements:
@@ -118,6 +146,9 @@ func (hm *healthManager) listenMeasurements(ctx context.Context, measurements <-
 			if err != nil {
 				log.Error().AnErr("error", err).Msgf("Unable to update target with id %s", measurement.targetID)
 			}
+		case <-hm.stopSig:
+			ShutDownCollector()
+			return
 		case <-ctx.Done():
 			ShutDownCollector()
 			return
@@ -231,15 +262,22 @@ func (hm *healthManager) buildTargetFromMeasure(measure *targetMeasurement) (*ra
 
 // Calculates raw health data from the registry and forwards all health data to the writer once per cycle
 func (hm *healthManager) healthForwarder(ctx context.Context, healthIn chan<- *target.Health) {
+	hm.wg.Add(1)
 	log := logging.GetLogger()
 	log.Info().Msgf("Start to send health data to a writer with cycle %v", hm.config.CollectionCycle)
-	defer log.Info().Msg("Finish to send health data to a writer")
-
+	defer func() {
+		log.Info().Msg("Finish to send health data to a writer")
+		hm.wg.Done()
+	}()
 	ticker := time.NewTicker(hm.config.CollectionCycle)
 	for {
 		select {
 		case <-ticker.C:
 			hm.writeHealthResult(healthIn)
+		case <-hm.stopSig:
+			hm.writeHealthResult(healthIn)
+			close(healthIn)
+			return
 		case <-ctx.Done():
 			hm.writeHealthResult(healthIn)
 			close(healthIn)

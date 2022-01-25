@@ -51,7 +51,7 @@ func main() {
 
 	// start health monitoring framework
 	// after this you are safe to call collector in any part of your program
-	health.FrameworkStart(ctx, config, manager, writer)
+	frameworkStop := health.FrameworkStart(ctx, config, manager, writer)
 
 	time.Sleep(1 * time.Second)
 
@@ -59,6 +59,7 @@ func main() {
 	wg.Add(1)
 	go bus(wg)
 	wg.Wait()
+	frameworkStop()
 }
 
 func bus(wg *sync.WaitGroup) {
