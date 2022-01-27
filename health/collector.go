@@ -45,7 +45,7 @@ func SetCollectorSingleton(c Collector) {
 	collector = c.(*healthCollector)
 }
 
-// ShutDownCollector turns off collector and closes input channel
+// StopCollectorSingleton turns off collector and closes input channel
 func StopCollectorSingleton() {
 	if collector != nil {
 		collector.isRunning = false
@@ -53,7 +53,7 @@ func StopCollectorSingleton() {
 	}
 }
 
-// GetCollector returns a health collector instance if it was already initialized by manager
+// GetCollectorSingleton returns a health collector instance if it was already initialized
 func GetCollectorSingleton() (Collector, error) {
 	if collector == nil {
 		return nil, utils.ErrDeadCollector
@@ -61,6 +61,7 @@ func GetCollectorSingleton() (Collector, error) {
 	return collector, nil
 }
 
+// ResetCollectorSingleton sets collector var to nil
 func ResetCollectorSingleton() {
 	collector = nil
 }
@@ -153,8 +154,10 @@ func (hc *healthCollector) ChangeHealth(targetID string, status target.HealthSta
 	return nil
 }
 
+// MeasureType lists possible measurements types that collector can work with
 type MeasureType int
 
+// list of measure types
 const (
 	_ MeasureType = iota
 	HealthStatus
@@ -164,7 +167,7 @@ const (
 	Message
 )
 
-// targetMeasurement is used by collector to send data.
+// TargetMeasurement is used by collector to send data.
 // You should define a measureType so manager will know what field it should looking for
 // Can be splitted into different structs and wrapped with the one interface in case
 // if we will have too many different measure types (should save us some ram)
