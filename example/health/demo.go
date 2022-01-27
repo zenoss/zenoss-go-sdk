@@ -78,6 +78,7 @@ func bus(wg *sync.WaitGroup) {
 	if err != nil {
 		panic(err)
 	}
+	defer hbCancel()
 
 	// just started
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 0)
@@ -122,6 +123,5 @@ func bus(wg *sync.WaitGroup) {
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 25.0)
 
 	time.Sleep(sleeps)
-	hbCancel()
 	log.Info().Msg("Bus is keep moving but we don't need to monitor it anymore")
 }
