@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/reporters"
 	. "github.com/onsi/gomega"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
@@ -18,6 +21,13 @@ import (
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 )
+
+func TestWriter(t *testing.T) {
+	RegisterFailHandler(Fail)
+	rand.Seed(GinkgoRandomSeed())
+	junitReporter := reporters.NewJUnitReporter("junit.xml")
+	RunSpecsWithDefaultAndCustomReporters(t, "Writer Suite", []Reporter{junitReporter})
+}
 
 var _ = Describe("Writer", func() {
 	var (
@@ -57,6 +67,17 @@ var _ = Describe("Writer", func() {
 	})
 
 	Context("Start", func() {
+		BeforeEach(func() {
+			healthWriter = writer.New(dests)
+		})
+
+		It("should start and die with shutdown", func() {
+			hCh := make(chan *target.Health)
+			tCh := make(chan *target.Target)
+			go healthWriter.Start(ctx, hCh, tCh)
+			healthWriter.Shutdown()
+		})
+
 		It("should log Health and Target info. Mocked destination shouldn't affect writer", func() {
 			targetID := "testTarget"
 			empty := []string{}

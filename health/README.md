@@ -59,13 +59,17 @@ health.FrameworkStart(ctx, config, manager, writer)
 After you done with inititalization you can call collector in any part of your program and collect any health data that you want. You can even send a [message](#message) per target.
 
 ```go
-collector, err := health.GetCollector()
+collector, err := health.GetCollectorSingleton()
 if err != nil {
     // handle an error here
 }
 
 // you can collect heartbeat data within configured collection cycle
-go collector.HeartBeat(firstTargetID)
+hbCancel, err := collector.HeartBeat(firstTargetID)
+if err != nil {
+    // handle an error here
+}
+defer hbCancel()
 // you can store any float data as a metric info
 collector.AddMetricValue(firstTargetID, someMetricID, 35.4)
 // you can store counter data per cycle (like number of some method executions)
