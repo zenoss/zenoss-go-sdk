@@ -122,7 +122,7 @@ func (hm *healthManager) Start(
 	hm.wg.Add(1)
 	go func() {
 		defer hm.wg.Done()
-		go hm.healthForwarder(ctx, healthIn)
+		hm.healthForwarder(ctx, healthIn)
 	}()
 
 	hm.started = true
@@ -137,8 +137,8 @@ func (hm *healthManager) Start(
 
 func (hm *healthManager) Shutdown() {
 	close(hm.stopSig)
-	close(hm.targetIn)
 	<-hm.stopWait
+	close(hm.targetIn)
 }
 
 func (hm *healthManager) IsStarted() bool {
@@ -293,13 +293,9 @@ func (hm *healthManager) buildTargetFromMeasure(measure *TargetMeasurement) (*ra
 
 // Calculates raw health data from the registry and forwards all health data to the writer once per cycle
 func (hm *healthManager) healthForwarder(ctx context.Context, healthIn chan<- *target.Health) {
-	hm.wg.Add(1)
 	log := logging.GetLogger()
 	log.Info().Msgf("Start to send health data to a writer with cycle %v", hm.config.CollectionCycle)
-	defer func() {
-		log.Info().Msg("Finish to send health data to a writer")
-		hm.wg.Done()
-	}()
+	defer func() { log.Info().Msg("Finish to send health data to a writer") }()
 	ticker := time.NewTicker(hm.config.CollectionCycle)
 	for {
 		select {
