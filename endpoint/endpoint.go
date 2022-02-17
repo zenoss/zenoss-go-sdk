@@ -114,13 +114,13 @@ type Config struct {
 	TestRegClient data_registry.DataRegistryServiceClient
 
 	// Min TTL for local cache
-	MinTTL int
+	MinTTL int `yaml:"minTTL"`
 
 	// Max TTL for local cache
-	MaxTTL int
+	MaxTTL int `yaml:"maxTTL"`
 
 	// CacheSizeLimit for local cache
-	CacheSizeLimit int
+	CacheSizeLimit int `yaml:"cacheSizeLimit"`
 
 	// ExcludedTags are tags to exclude when generating hash
 	ExcludedTags []string
