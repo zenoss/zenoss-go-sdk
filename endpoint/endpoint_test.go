@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/stretchr/testify/mock"
@@ -27,8 +26,7 @@ import (
 func TestEndpoint(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Endpoint Suite", []Reporter{junitReporter})
+	RunSpecs(t, "Endpoint Suite")
 }
 
 var _ = Describe("Endpoint", func() {

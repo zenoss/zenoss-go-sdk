@@ -4,8 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/zenoss/zenoss-go-sdk/utils"
 )
@@ -13,8 +12,7 @@ import (
 func TestStringUtils(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "String Utils Suite", []Reporter{junitReporter})
+	RunSpecs(t, "String Utils Suite")
 }
 
 var _ = Describe("ListContainsString", func() {

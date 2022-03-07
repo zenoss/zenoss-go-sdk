@@ -4,8 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	_struct "google.golang.org/protobuf/types/known/structpb"
@@ -16,8 +15,7 @@ import (
 func TestMetadata(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Metadata Suite", []Reporter{junitReporter})
+	RunSpecs(t, "Metadata Suite")
 }
 
 var _ = Describe("Metadata", func() {

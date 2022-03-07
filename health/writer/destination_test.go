@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"

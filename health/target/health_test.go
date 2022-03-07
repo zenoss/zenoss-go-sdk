@@ -1,7 +1,7 @@
 package target_test
 
 import (
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"

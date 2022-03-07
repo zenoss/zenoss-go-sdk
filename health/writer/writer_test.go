@@ -9,8 +9,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
@@ -25,8 +24,7 @@ import (
 func TestWriter(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Writer Suite", []Reporter{junitReporter})
+	RunSpecs(t, "Writer Suite")
 }
 
 var _ = Describe("Writer", func() {

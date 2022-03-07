@@ -69,7 +69,7 @@ pipeline {
     }
     post {
         always {
-            junit "**/junit.xml"
+            junit "junit.xml"
             step([
                 $class: 'CoberturaPublisher',
                 autoUpdateHealth: false,
