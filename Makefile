@@ -27,10 +27,7 @@ GOLINT = $(GOBIN)/golint
 $(GOBIN)/golint: PACKAGE=golang.org/x/lint/golint
 
 GINKGO = $(GOBIN)/ginkgo
-$(GOBIN)/ginkgo: PACKAGE=github.com/onsi/ginkgo/ginkgo
-
-GOCOVMERGE = $(GOBIN)/gocovmerge
-$(GOBIN)/gocovmerge: PACKAGE=github.com/wadey/gocovmerge
+$(GOBIN)/ginkgo: PACKAGE=github.com/onsi/ginkgo/v2/ginkgo
 
 GOCOV = $(GOBIN)/gocov
 $(GOBIN)/gocov: PACKAGE=github.com/axw/gocov/...
@@ -39,7 +36,7 @@ GOCOVXML = $(GOBIN)/gocov-xml
 $(GOBIN)/gocov-xml: PACKAGE=github.com/AlekSi/gocov-xml
 
 .PHONY: tools
-tools: $(GOLINT) $(GINKGO) $(GOCOVMERGE) $(GOCOV) $(GOCOVXML) ; $(info $(M) installed tools) @ ## Install tools.
+tools: $(GOLINT) $(GINKGO) $(GOCOV) $(GOCOVXML) ; $(info $(M) installed tools) @ ## Install tools.
 
 # Dependencies
 
@@ -67,13 +64,12 @@ lint: | $(GOLINT) ; $(info $(M) running golint…) @ ## Check packages with goli
 # Test
 
 .PHONY: test
-test: COVERAGE_PROFILE := $(COVERAGE_DIR)/profile.out
+test: COVERAGE_PROFILE := coverprofile.out
 test: COVERAGE_HTML    := $(COVERAGE_DIR)/index.html
 test: COVERAGE_XML     := $(COVERAGE_DIR)/coverage.xml
-test: | $(GINKGO) $(GOCOVMERGE) $(GOCOV) $(GOCOVXML) ; $(info $(M) running tests with coverage…) @ ## Execute tests with ginkgo. (including coverage)
+test: | $(GINKGO) $(GOCOV) $(GOCOVXML) ; $(info $(M) running tests with coverage…) @ ## Execute tests with ginkgo. (including coverage)
 	$Q mkdir -p $(COVERAGE_DIR)
-	$Q $(GINKGO) -r -cover -covermode=count
-	$Q $(GOCOVMERGE) $$(find . -name \*.coverprofile) > $(COVERAGE_PROFILE)
+	$Q $(GINKGO) -r -cover -covermode=count --junit-report=junit.xml
 	$Q $(GO) tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
 	$Q $(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
 
@@ -104,8 +100,8 @@ fmt: ; $(info $(M) running gofmt…) @ ## Run gofmt on all files.
 
 .PHONY: clean
 clean: ; $(info $(M) cleaning…)	@ ## Cleanup everything.
-	@rm -f **/junit.xml internal/**/junit.xml
-	@rm -f **/*.coverprofile internal/**/*.coverprofile
+	@rm -f junit.xml internal/junit.xml
+	@rm -f coverprofile.out internal/coverprofile.out
 	@rm -rf $(COVERAGE_DIR)
 
 .PHONY: help

@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/zenoss/zenoss-go-sdk/health"
 	"github.com/zenoss/zenoss-go-sdk/health/mocks"
@@ -17,8 +16,7 @@ import (
 func TestHealth(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Health Framework Suite", []Reporter{junitReporter})
+	RunSpecs(t, "Health Framework Suite")
 }
 
 var _ = Describe("Health Framework", func() {

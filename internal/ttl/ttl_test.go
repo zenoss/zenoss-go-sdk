@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
@@ -18,8 +17,7 @@ import (
 func TestTTL(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "TTL Suite", []Reporter{junitReporter})
+	RunSpecs(t, "TTL Suite")
 }
 
 var _ = Describe("Tracker", func() {

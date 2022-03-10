@@ -4,8 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
@@ -14,8 +13,7 @@ import (
 func TestHealthTarget(t *testing.T) {
 	RegisterFailHandler(Fail)
 	rand.Seed(GinkgoRandomSeed())
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Health Target Suite", []Reporter{junitReporter})
+	RunSpecs(t, "Health Target Suite")
 }
 
 var _ = Describe("Target Tests", func() {
