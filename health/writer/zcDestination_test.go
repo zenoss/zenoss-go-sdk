@@ -116,6 +116,7 @@ var _ = Describe("Destination", func() {
 				targetID, utils.DefaultTargetType, false,
 				empty, empty, empty,
 			)
+			Ω(err).Should(BeNil())
 
 			out.On("PutModels", mock.Anything, mock.Anything).Return(&data_receiver.ModelStatusResult{
 				Failed:    0,
@@ -137,6 +138,7 @@ var _ = Describe("Destination", func() {
 				targetID, utils.DefaultTargetType, false,
 				empty, empty, empty,
 			)
+			Ω(err).Should(BeNil())
 
 			out.On("PutModels", mock.Anything, mock.Anything).Return(nil, mockedErr)
 
