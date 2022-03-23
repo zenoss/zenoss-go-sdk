@@ -69,7 +69,8 @@ func (d *ZCDestination) Register(ctx context.Context, target *target.Target) err
 	model := &zpb.Model{}
 	model.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
 	model.Dimensions = d.buildTargetDimensions(target.ID)
-	model.MetadataFields = d.buildTargetMetadata(target.ID)
+	model.MetadataFields = d.buildTargetMetadata()
+	model.MetadataFields.Fields[utils.ZenossNameField] = sdk_utils.StrToStructValue(target.ID)
 
 	result, err := d.Endpoint.PutModels(ctx, &zpb.Models{Models: []*zpb.Model{model}})
 	if err != nil {
@@ -128,7 +129,7 @@ func (d *ZCDestination) buildMetric(targetID, metricID string, value float64) *z
 	metric.Metric = metricID
 	metric.Value = value
 	metric.Dimensions = d.buildTargetDimensions(targetID)
-	metric.MetadataFields = d.buildTargetMetadata(targetID)
+	metric.MetadataFields = d.buildTargetMetadata()
 	return metric
 }
 
@@ -144,9 +145,8 @@ func (d *ZCDestination) buildTargetDimensions(targetID string) map[string]string
 	return dims
 }
 
-func (d *ZCDestination) buildTargetMetadata(targetID string) *structpb.Struct {
+func (d *ZCDestination) buildTargetMetadata() *structpb.Struct {
 	metadata := make(map[string]*structpb.Value)
-	metadata[utils.ZenossNameField] = sdk_utils.StrToStructValue(targetID)
 	for key, value := range d.Config.Metadata {
 		metadata[key] = sdk_utils.StrToStructValue(value)
 	}
