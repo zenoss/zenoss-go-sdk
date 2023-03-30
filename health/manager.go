@@ -147,20 +147,22 @@ func (hm *healthManager) IsStarted() bool {
 
 func (hm *healthManager) AddTargets(targets []*target.Target) {
 	hm.registry.lock()
-	defer hm.registry.unlock()
-
 	for _, newTarget := range targets {
 		hm.registry.setRawHealthForTarget(newRawHealth(newTarget))
 		if hm.started {
 			hm.targetIn <- newTarget
 		}
 	}
+	hm.registry.unlock() //it is best practise to unlock immediately after sensitive block
 }
 
 func (hm *healthManager) sendTargetsInfo() {
+	//map NOT concurrent safe to read with simultaneous writes
+	hm.registry.lock() //usage of RWmutex suggested
 	for _, rawHealth := range hm.registry.getRawHealthMap() {
 		hm.targetIn <- rawHealth.target
 	}
+	hm.registry.unlock()
 }
 
 // Health Manager listens for data from collector and stores it in a registry
