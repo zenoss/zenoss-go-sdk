@@ -12,12 +12,11 @@ require (
 	github.com/onsi/gomega v1.17.0
 	github.com/rs/zerolog v1.26.0
 	github.com/spaolacci/murmur3 v1.1.0
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.1
 	github.com/zenoss/zenoss-protobufs v1.2.0
-	go.opencensus.io v0.22.3
-	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
-	google.golang.org/api v0.20.0
-	google.golang.org/grpc v1.28.1
-	google.golang.org/protobuf v1.27.1
+	go.opencensus.io v0.24.0
+	google.golang.org/api v0.103.0
+	google.golang.org/grpc v1.53.0
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0
 )
