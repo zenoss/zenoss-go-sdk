@@ -51,7 +51,7 @@ pipeline {
                         mkdir -p ssl
                         chmod a+rwx ssl
                         if [ ! -e ssl/sonarcacert.ks ];then
-                            keytool -import -file ${SONARQUBE_CERT} -keystore ssl/sonarcacert.ks -storepass changeit -noprompt
+                            keytool -import -file ${SONARQUBE_CERT} -keystore ssl/sonarcacert.ks -storepass changeit -noprompt -storetype JKS
                         fi
                     '''
                 }
