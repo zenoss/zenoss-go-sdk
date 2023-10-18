@@ -106,8 +106,10 @@ type healthManager struct {
 }
 
 func (hm *healthManager) Start(
-	ctx context.Context, measureOut <-chan *TargetMeasurement,
-	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
+	ctx context.Context,
+	measureOut <-chan *TargetMeasurement,
+	healthIn chan<- *target.Health,
+	targetIn chan<- *target.Target,
 ) {
 	hm.targetIn = targetIn
 	hm.healthIn = healthIn
@@ -158,6 +160,9 @@ func (hm *healthManager) AddTargets(targets []*target.Target) {
 }
 
 func (hm *healthManager) sendTargetsInfo() {
+	hm.registry.lock()
+	defer hm.registry.unlock()
+
 	for _, rawHealth := range hm.registry.getRawHealthMap() {
 		hm.targetIn <- rawHealth.target
 	}

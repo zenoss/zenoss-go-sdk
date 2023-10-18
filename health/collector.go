@@ -35,7 +35,7 @@ func NewCollector(cycleDuration time.Duration, metricsIn chan<- *TargetMeasureme
 	return &healthCollector{
 		cycleDuration: cycleDuration,
 		metricsIn:     metricsIn,
-		isRunning:     true,
+		done:          make(chan struct{}),
 	}
 }
 
@@ -48,8 +48,7 @@ func SetCollectorSingleton(c Collector) {
 // StopCollectorSingleton turns off collector and closes input channel
 func StopCollectorSingleton() {
 	if collector != nil {
-		collector.isRunning = false
-		close(collector.metricsIn)
+		close(collector.done)
 	}
 }
 
@@ -69,13 +68,16 @@ func ResetCollectorSingleton() {
 type healthCollector struct {
 	cycleDuration time.Duration
 	metricsIn     chan<- *TargetMeasurement
-	isRunning     bool
+	done          chan struct{}
 }
 
 func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error) {
-	if !hc.isRunning {
+	select {
+	case <-hc.done:
 		return nil, utils.ErrDeadCollector
+	default:
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
@@ -84,15 +86,19 @@ func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error
 			select {
 			case <-ctx.Done():
 				return
+			case <-hc.done:
+				return
 			case <-ticker.C:
-				if !hc.isRunning {
-					return
-				}
 				measure := &TargetMeasurement{
 					TargetID:    targetID,
 					MeasureType: Heartbeat,
 				}
-				hc.metricsIn <- measure
+
+				select {
+				case hc.metricsIn <- measure:
+				case <-hc.done:
+					return
+				}
 			}
 		}
 	}()
@@ -101,57 +107,57 @@ func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error
 }
 
 func (hc *healthCollector) AddToCounter(targetID, counterID string, value int32) error {
-	if !hc.isRunning {
-		return utils.ErrDeadCollector
-	}
-	measure := &TargetMeasurement{
+	select {
+	case hc.metricsIn <- &TargetMeasurement{
 		TargetID:      targetID,
 		MeasureType:   CounterChange,
 		MeasureID:     counterID,
 		CounterChange: value,
+	}:
+		return nil
+	case <-hc.done:
+		return utils.ErrDeadCollector
 	}
-	hc.metricsIn <- measure
-	return nil
 }
 
 func (hc *healthCollector) AddMetricValue(targetID, metricID string, value float64) error {
-	if !hc.isRunning {
-		return utils.ErrDeadCollector
-	}
-	measure := &TargetMeasurement{
+	select {
+	case hc.metricsIn <- &TargetMeasurement{
 		TargetID:    targetID,
 		MeasureType: Metric,
 		MeasureID:   metricID,
 		MetricValue: value,
+	}:
+		return nil
+	case <-hc.done:
+		return utils.ErrDeadCollector
 	}
-	hc.metricsIn <- measure
-	return nil
 }
 
 func (hc *healthCollector) HealthMessage(targetID string, msg *target.Message) error {
-	if !hc.isRunning {
-		return utils.ErrDeadCollector
-	}
-	measure := &TargetMeasurement{
+	select {
+	case hc.metricsIn <- &TargetMeasurement{
 		TargetID:    targetID,
 		MeasureType: Message,
 		Message:     msg,
+	}:
+		return nil
+	case <-hc.done:
+		return utils.ErrDeadCollector
 	}
-	hc.metricsIn <- measure
-	return nil
 }
 
 func (hc *healthCollector) ChangeHealth(targetID string, status target.HealthStatus) error {
-	if !hc.isRunning {
-		return utils.ErrDeadCollector
-	}
-	measure := &TargetMeasurement{
+	select {
+	case hc.metricsIn <- &TargetMeasurement{
 		TargetID:     targetID,
 		MeasureType:  HealthStatus,
 		HealthStatus: status,
+	}:
+		return nil
+	case <-hc.done:
+		return utils.ErrDeadCollector
 	}
-	hc.metricsIn <- measure
-	return nil
 }
 
 // MeasureType lists possible measurements types that collector can work with

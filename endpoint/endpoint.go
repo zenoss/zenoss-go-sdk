@@ -342,7 +342,7 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 	return e.config.LoggerConfig
 }
 
-//GetMetricCacheKey generates key to use for metric whose id is going to be cached
+// GetMetricCacheKey generates key to use for metric whose id is going to be cached
 func (e *Endpoint) GetMetricCacheKey(metric *data_receiver.Metric) string {
 	dims := metric.Dimensions
 	keys := []string{}
@@ -375,7 +375,7 @@ func tagExcluded(tag string, excludedTags []string) bool {
 	return false
 }
 
-//GetMetadataHash generates hash of metadata fields of the metric whose id is going to be cached
+// GetMetadataHash generates hash of metadata fields of the metric whose id is going to be cached
 func (e *Endpoint) GetMetadataHash(metric *data_receiver.Metric) string {
 	hasher := murmur3.New64()
 	var buf []byte
@@ -396,7 +396,7 @@ func (e *Endpoint) GetMetadataHash(metric *data_receiver.Metric) string {
 	return strconv.FormatUint(hasher.Sum64(), 10)
 }
 
-//checkCache checks the cache to see if metruc is already registered or needs update
+// checkCache checks the cache to see if metruc is already registered or needs update
 func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_receiver.CompactMetric, []*data_receiver.Metric, []string) {
 	var (
 		cachedCompctMetrics = make([]*data_receiver.CompactMetric, 0, len(allmetrics))
@@ -431,7 +431,7 @@ func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_recei
 	return cachedCompctMetrics, misses, missKeys
 }
 
-//ConvertMetrics will convert canonical metrics to compact
+// ConvertMetrics will convert canonical metrics to compact
 func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Metric) ([]*data_receiver.CompactMetric, []*data_receiver.Metric) {
 	// cachedCompctMetrics - compact metrics with ids from cache
 	// misses - canonical metrics which do not have an id in cache Or that need re-registration due to metadta chenge
@@ -472,7 +472,7 @@ func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Me
 	return cachedCompctMetrics, failedMetrics
 }
 
-//registerMetrics will register metric using dataRegistry
+// registerMetrics will register metric using dataRegistry
 func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver.Metric) ([]bool, []MetricIDNameAndHash) {
 	successes := make([]bool, len(metrics), len(metrics))
 	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, 0, len(metrics))
