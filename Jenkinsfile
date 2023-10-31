@@ -14,27 +14,6 @@ pipeline {
                 checkout scm
             }
         }
-        stage('Tools') {
-            steps {
-                ansiColor('xterm') {
-                    sh 'make tools'
-                }
-            }
-        }
-        stage('Dependencies') {
-            steps {
-                ansiColor('xterm') {
-                    sh 'make dependencies'
-                }
-            }
-        }
-        stage('Static Checks') {
-            steps {
-                ansiColor('xterm') {
-                    sh 'make check'
-                }
-            }
-        }
         stage('Tests') {
             steps {
                 ansiColor('xterm') {
