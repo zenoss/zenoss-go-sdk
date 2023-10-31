@@ -93,22 +93,24 @@ func (p *Processor) GetLoggerConfig() log.LoggerConfig {
 }
 
 // PutEvent implements DataReceiverService PutEvent streaming RPC.
-func (p *Processor) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
+func (*Processor) PutEvent(_ context.Context, _ ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutEvent is not supported")
 }
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
-func (p *Processor) PutEvents(ctx context.Context, events *data_receiver.Events, opts ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
-	//TODO: impelement event processor rules
+func (*Processor) PutEvents(_ context.Context, _ *data_receiver.Events, _ ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
+	// TODO: impelement event processor rules
 	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
 }
 
 // PutMetric implements DataReceiverService PutMetric streaming RPC.
-func (p *Processor) PutMetric(context.Context, ...grpc.CallOption) (data_receiver.DataReceiverService_PutMetricClient, error) {
+func (*Processor) PutMetric(context.Context, ...grpc.CallOption) (data_receiver.DataReceiverService_PutMetricClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutMetric is not supported")
 }
 
 // PutMetrics implements DataReceiverService PutMetrics unary RPC.
+//
+//revive:disable:cognitive-complexity
 func (p *Processor) PutMetrics(ctx context.Context, metrics *data_receiver.Metrics, _ ...grpc.CallOption) (*data_receiver.StatusResult, error) {
 	var failedCompactMetricsCount, succeededCompactMetricsCount int32
 	var failedCompactMetrics []*data_receiver.CompactMetricError
@@ -200,6 +202,8 @@ func (p *Processor) PutMetrics(ctx context.Context, metrics *data_receiver.Metri
 		FailedMetrics:        failedMetrics,
 	}, nil
 }
+
+//revive:enable:cognitive-complexity
 
 // PutModels implements DataReceiverService PutModels unary RPC.
 func (p *Processor) PutModels(ctx context.Context, models *data_receiver.Models, _ ...grpc.CallOption) (*data_receiver.ModelStatusResult, error) {
@@ -312,10 +316,10 @@ loop:
 type SignalDrop struct{}
 
 // Error exists solely to satisfy the error interface.
-func (e *SignalDrop) Error() string { return "drop" }
+func (*SignalDrop) Error() string { return "drop" }
 
 // SignalSend is returned by an action type when the data should be immediately sent.
 type SignalSend struct{}
 
 // Error exists solely to satisfy the error interface.
-func (e *SignalSend) Error() string { return "send" }
+func (*SignalSend) Error() string { return "send" }

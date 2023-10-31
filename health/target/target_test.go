@@ -23,9 +23,7 @@ var _ = Describe("Target Tests", func() {
 	)
 
 	Context("constructor", func() {
-		var (
-			metricIDs, counterIDs, tCounterIDs []string
-		)
+		var metricIDs, counterIDs, tCounterIDs []string
 		BeforeEach(func() {
 			metricIDs = []string{"someMetric"}
 			counterIDs = []string{"someCounter"}
@@ -46,9 +44,7 @@ var _ = Describe("Target Tests", func() {
 	})
 
 	Context("IsMeasureIDUnique method", func() {
-		var (
-			testTarget *target.Target
-		)
+		var testTarget *target.Target
 
 		BeforeEach(func() {
 			metricIDs := []string{"someMetric"}

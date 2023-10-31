@@ -28,13 +28,13 @@ type LogDestination struct {
 }
 
 // Push takes health data and builds a nice log message with it on info level
-func (l *LogDestination) Push(ctx context.Context, health *target.Health) error {
+func (l *LogDestination) Push(_ context.Context, health *target.Health) error {
 	l.logTargetHealth(health)
 	return nil
 }
 
 // Register takes target data and builds a nice log message with it on info level
-func (l *LogDestination) Register(ctx context.Context, target *target.Target) error {
+func (l *LogDestination) Register(_ context.Context, target *target.Target) error {
 	l.logTargetInfo(target)
 	return nil
 }

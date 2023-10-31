@@ -79,7 +79,7 @@ type Manager interface {
 
 // NewManager creates a new Manager instance with internal target registry.
 // You should init configuration and writer before and pass it here
-func NewManager(ctx context.Context, config *Config) Manager {
+func NewManager(_ context.Context, config *Config) Manager {
 	healthReg := newHealthRegistry()
 	return &healthManager{
 		registry: healthReg,
@@ -268,7 +268,7 @@ func (hm *healthManager) updateTargetsCounter(tHealth *rawHealth, measure *Targe
 	return nil
 }
 
-func (hm *healthManager) buildTargetFromMeasure(measure *TargetMeasurement) (*rawHealth, error) {
+func (*healthManager) buildTargetFromMeasure(measure *TargetMeasurement) (*rawHealth, error) {
 	var enableHeartbeat bool
 	metricIDs := make([]string, 0)
 	counterIDs := make([]string, 0)
@@ -325,7 +325,7 @@ func (hm *healthManager) writeHealthResult(healthIn chan<- *target.Health) {
 	}
 }
 
-func (hm *healthManager) calculateTargetHealth(rawHealth *rawHealth) *target.Health {
+func (*healthManager) calculateTargetHealth(rawHealth *rawHealth) *target.Health {
 	health := target.NewHealth(rawHealth.target.ID, rawHealth.target.Type)
 	health.Status = rawHealth.status
 	health.Heartbeat.Enabled = rawHealth.target.EnableHeartbeat
@@ -349,7 +349,7 @@ func (hm *healthManager) calculateTargetHealth(rawHealth *rawHealth) *target.Hea
 	return health
 }
 
-func (hm *healthManager) cleanHealthValues(rawHealth *rawHealth) {
+func (*healthManager) cleanHealthValues(rawHealth *rawHealth) {
 	rawHealth.heartBeat = false
 	rawHealth.messages = []*target.Message{}
 	for counterID := range rawHealth.counters {

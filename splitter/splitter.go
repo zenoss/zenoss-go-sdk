@@ -80,7 +80,7 @@ func (s *Splitter) GetLoggerConfig() log.LoggerConfig {
 }
 
 // PutEvent implements DataReceiverService PutEvent streaming RPC.
-func (s *Splitter) PutEvent(ctx context.Context, opts ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
+func (*Splitter) PutEvent(_ context.Context, _ ...grpc.CallOption) (data_receiver.DataReceiverService_PutEventClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutEvent is not supported")
 }
 
@@ -133,11 +133,13 @@ func (s *Splitter) PutEvents(ctx context.Context, events *data_receiver.Events, 
 }
 
 // PutMetric implements DataReceiverService PutMetric streaming RPC.
-func (s *Splitter) PutMetric(context.Context, ...grpc.CallOption) (data_receiver.DataReceiverService_PutMetricClient, error) {
+func (*Splitter) PutMetric(context.Context, ...grpc.CallOption) (data_receiver.DataReceiverService_PutMetricClient, error) {
 	return nil, status.Error(codes.Unimplemented, "PutMetric is not supported")
 }
 
 // PutMetrics implements DataReceiverService PutMetrics unary RPC.
+//
+//revive:disable:cognitive-complexity
 func (s *Splitter) PutMetrics(ctx context.Context, metrics *data_receiver.Metrics, opts ...grpc.CallOption) (*data_receiver.StatusResult, error) {
 	var failedCompactMetricsCount, succeededCompactMetricsCount int32
 	var failedCompactMetrics []*data_receiver.CompactMetricError
@@ -251,6 +253,8 @@ func (s *Splitter) PutMetrics(ctx context.Context, metrics *data_receiver.Metric
 		FailedMetrics:        failedMetrics,
 	}, nil
 }
+
+//revive:enable:cognitive-complexity
 
 // PutModels implements DataReceiverService PutModels unary RPC.
 func (s *Splitter) PutModels(ctx context.Context, models *data_receiver.Models, opts ...grpc.CallOption) (*data_receiver.ModelStatusResult, error) {

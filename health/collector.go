@@ -8,9 +8,7 @@ import (
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
-var (
-	collector *healthCollector
-)
+var collector *healthCollector
 
 // Collector provides different methods to send health information per target
 type Collector interface {

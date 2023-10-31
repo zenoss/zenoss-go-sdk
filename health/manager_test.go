@@ -12,7 +12,6 @@ import (
 )
 
 var _ = Describe("Health Manager", func() {
-
 	var (
 		ctx     context.Context
 		manager health.Manager

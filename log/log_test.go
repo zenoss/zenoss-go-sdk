@@ -20,10 +20,8 @@ func TestLog(t *testing.T) {
 	RunSpecs(t, "Log Suite")
 }
 
-var (
-	// Ensure MockLogger implements log.Logger interface.
-	_ log.Logger = (*MockLogger)(nil)
-)
+// Ensure MockLogger implements log.Logger interface.
+var _ log.Logger = (*MockLogger)(nil)
 
 type MockLogger struct {
 	LoggerConfig log.LoggerConfig

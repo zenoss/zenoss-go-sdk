@@ -67,10 +67,8 @@ var (
 	KeyModuleName = tag.MustNewKey("module_name")
 )
 
-var (
-	// DefaultCountDistribution is a simple powers-of-two distribution.
-	DefaultCountDistribution = view.Distribution(0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536)
-)
+// DefaultCountDistribution is a simple powers-of-two distribution.
+var DefaultCountDistribution = view.Distribution(0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536)
 
 var (
 	// ReceivedCompactMetricsView views the sum of compact metrics received.

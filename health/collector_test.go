@@ -101,7 +101,6 @@ var _ = Describe("Collector", func() {
 				Ω(hsMeasure.HealthStatus).Should(Equal(healthStatus))
 			})
 		})
-
 	})
 
 	// TODO: ZING-19127 add Serial decorator after ginkgo v2 upgrade (singleton staff should be run separately)

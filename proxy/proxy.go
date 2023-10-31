@@ -49,7 +49,7 @@ type Config struct {
 // Proxy is a proxy for Zenoss' DataReceiverService API.
 type Proxy struct {
 	config         Config
-	allowedAPIKeys map[string]interface{}
+	allowedAPIKeys map[string]any
 	output         data_receiver.DataReceiverServiceClient
 	tagMutators    []tag.Mutator
 }
@@ -79,7 +79,7 @@ func (p *Proxy) SetConfig(config Config) error {
 		config.LoggerConfig.Fields = log.Fields{"proxy": config.Name}
 	}
 
-	allowedAPIKeys := make(map[string]interface{}, len(config.AllowedAPIKeys))
+	allowedAPIKeys := make(map[string]any, len(config.AllowedAPIKeys))
 	for _, apiKey := range config.AllowedAPIKeys {
 		allowedAPIKeys[apiKey] = nil
 	}
@@ -102,25 +102,25 @@ func (p *Proxy) GetLoggerConfig() log.LoggerConfig {
 }
 
 // PutEvents implements DataReceiverService PutEvents unary RPC.
-func (p *Proxy) PutEvents(context.Context, *data_receiver.Events) (*data_receiver.EventStatusResult, error) {
+func (*Proxy) PutEvents(context.Context, *data_receiver.Events) (*data_receiver.EventStatusResult, error) {
 	return nil, status.Error(codes.Unimplemented, "PutEvents is not supported")
-
 }
 
 // PutEvent implements DataReceiverService PutEvent streaming RPC.
-func (p *Proxy) PutEvent(data_receiver.DataReceiverService_PutEventServer) error {
+func (*Proxy) PutEvent(data_receiver.DataReceiverService_PutEventServer) error {
 	return status.Error(codes.Unimplemented, "PutEvent is not supported")
-
 }
 
 // PutMetric is not supported.
 // Satisfies data_receiver.DataReceiverServiceServer interface.
-func (p *Proxy) PutMetric(data_receiver.DataReceiverService_PutMetricServer) error {
+func (*Proxy) PutMetric(data_receiver.DataReceiverService_PutMetricServer) error {
 	return status.Error(codes.Unimplemented, "PutMetric is not supported")
 }
 
 // PutMetrics receives metrics of all kinds via gRPC.
 // Satisfies data_receiver.DataReceiverServiceServer interface.
+//
+//revive:disable:cognitive-complexity
 func (p *Proxy) PutMetrics(ctx context.Context, metrics *data_receiver.Metrics) (*data_receiver.StatusResult, error) {
 	err := p.checkAPIKey(ctx)
 	if err != nil {
@@ -236,6 +236,8 @@ func (p *Proxy) PutMetrics(ctx context.Context, metrics *data_receiver.Metrics) 
 		FailedMetrics:        failedMetrics,
 	}, nil
 }
+
+//revive:enable:cognitive-complexity
 
 // PutModels receives models via gRPC.
 // Satisfies data_receiver.DataReceiverServiceServer interface.
