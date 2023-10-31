@@ -4,6 +4,7 @@ ifeq ($(HOME),/)
 	export HOME =
 endif
 
+ROOTDIR			?= $(CURDIR)
 SHELL			:= /bin/bash
 GO				:= $(shell command -v go 2> /dev/null)
 GOFUMPT			:= $(shell command -v gofumpt 2> /dev/null)
