@@ -1,3 +1,5 @@
-FROM golang:1.16-alpine3.13 AS build
+ARG ZENKIT_BUILD_VERSION=1.17.0
 
-RUN apk --no-cache --update add gcc git make musl-dev openjdk11
+FROM zenoss/zenkit-build:${ZENKIT_BUILD_VERSION} as builder
+
+ENTRYPOINT ["/bin/bash"]
