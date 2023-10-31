@@ -4,15 +4,21 @@ ifeq ($(HOME),/)
 	export HOME =
 endif
 
-ROOTDIR			?= $(CURDIR)
-SHELL			:= /bin/bash
-GO				:= $(shell command -v go 2> /dev/null)
-GOFUMPT			:= $(shell command -v gofumpt 2> /dev/null)
-REVIVE			:= $(shell command -v revive 2> /dev/null)
-GINKGO			:= $(shell command -v ginkgo 2> /dev/null)
-GOCOV			:= $(shell command -v gocov 2> /dev/null)
-GOCOVXML		:= $(shell command -v gocov-xml 2> /dev/null)
-COVERAGE_DIR	:= $(CURDIR)/coverage
+ROOTDIR					?= $(CURDIR)
+SHELL					:= /bin/bash
+GO						:= $(shell command -v go 2> /dev/null)
+GOFUMPT					:= $(shell command -v gofumpt 2> /dev/null)
+REVIVE					:= $(shell command -v revive 2> /dev/null)
+GINKGO					:= $(shell command -v ginkgo 2> /dev/null)
+GOCOV					:= $(shell command -v gocov 2> /dev/null)
+GOCOVXML				:= $(shell command -v gocov-xml 2> /dev/null)
+COVERAGE_DIR			:= $(CURDIR)/coverage
+ZENKIT_BUILD_VERSION	:= 1.17.0
+BUILD_IMG				:= zenoss/zenkit-build:$(ZENKIT_BUILD_VERSION)
+DOCKER_PARAMS			:= --rm -v $(ROOTDIR):/workspace/:rw \
+							-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
+							-w /workspace/
+DOCKER_CMD				:= docker run -t $(DOCKER_PARAMS) $(BUILD_IMG)
 
 M = $(shell printf "\033[34;1m▶\033[0m")
 RED = $(shell printf "\033[31;1m▶\033[0m")
@@ -61,6 +67,9 @@ test: fmt lint
 	$Q $(GO) tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
 	$Q $(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
 
+.PHONY: test-containerized
+test-containerized:
+	$(DOCKER_CMD) make test
 
 # Misc
 
