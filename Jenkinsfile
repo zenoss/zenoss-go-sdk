@@ -29,10 +29,11 @@ node('docker') {
             }
 
             stage('SonarQube PR analysis') {
+                sh("chmod -R o+w .")
                 String scannerHome = tool 'SonarScanner'
                 List<String> args = [
                     "${scannerHome}/bin/sonar-scanner",
-                    '-Dproject.settings=./ci/sonar-project.properties',
+                    '-Dproject.settings=./sonar-project.properties',
                     "-Dsonar.pullrequest.key=${env.ghprbPullId}",
                     "-Dsonar.pullrequest.branch=${env.ghprbSourceBranch}",
                     "-Dsonar.pullrequest.base=${env.ghprbTargetBranch}",
@@ -44,6 +45,7 @@ node('docker') {
             }
 
             stage('Validate test results') {
+                sh("chmod -R o+w .")
                 junit 'junit.xml'
                 step([
                     $class: 'CoberturaPublisher',
@@ -62,6 +64,7 @@ node('docker') {
         } finally {
             stage('Clean test environment') {
                 ansiColor('xterm') {
+                    sh("chmod -R o+w .")
                     sh("${MAKE} clean")
                 }
             }
