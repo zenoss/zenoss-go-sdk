@@ -8,7 +8,7 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.1.0
 	github.com/mitchellh/hashstructure v1.0.0
 	github.com/mitchellh/mapstructure v1.1.2
-	github.com/onsi/ginkgo/v2 v2.13.0
+	github.com/onsi/ginkgo/v2 v2.12.0
 	github.com/onsi/gomega v1.27.10
 	github.com/rs/zerolog v1.26.0
 	github.com/spaolacci/murmur3 v1.1.0

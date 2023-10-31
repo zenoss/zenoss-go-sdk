@@ -23,7 +23,7 @@ node('docker') {
         try {
             stage('Unit tests') {
                 ansiColor('xterm') {
-                    sh("chmod o+w .")
+                    sh("chmod -R o+w .")
                     sh("${MAKE} test-containerized")
                 }
             }
