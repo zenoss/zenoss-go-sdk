@@ -1,3 +1,4 @@
 /coverage
 junit.xml
 *.coverprofile
+/vendor/
