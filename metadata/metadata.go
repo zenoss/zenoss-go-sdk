@@ -41,11 +41,12 @@ func FromMap(m map[string]any) (*Fields, error) {
 // MustFromMap is like FromMap, but panics on error.
 // Should only be used in testing or cases where the contents of "m" are known to be safe.
 func MustFromMap(m map[string]any) *Fields {
-	if r, err := FromMap(m); err != nil {
+	r, err := FromMap(m)
+	if err != nil {
 		panic(err)
-	} else {
-		return r
 	}
+
+	return r
 }
 
 // FromStringMap returns a protobuf Struct given a string-to-string map.

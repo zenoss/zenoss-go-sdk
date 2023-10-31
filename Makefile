@@ -15,9 +15,9 @@ GOCOVXML				:= $(shell command -v gocov-xml 2> /dev/null)
 COVERAGE_DIR			:= $(CURDIR)/coverage
 ZENKIT_BUILD_VERSION	:= 1.17.0
 BUILD_IMG				:= zenoss/zenkit-build:$(ZENKIT_BUILD_VERSION)
-DOCKER_PARAMS			:= --rm -v $(ROOTDIR):/workspace/:rw \
-							-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
-							-w /workspace/
+DOCKER_PARAMS			:=	--rm \
+							--volume $(ROOTDIR):/workspace/:rw \
+							--workdir /workspace/
 DOCKER_CMD				:= docker run -t $(DOCKER_PARAMS) $(BUILD_IMG)
 
 M = $(shell printf "\033[34;1m▶\033[0m")

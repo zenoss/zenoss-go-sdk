@@ -1,6 +1,6 @@
 #! groovy
 
-MAKE='make -f ci/Makefile'
+MAKE='make -f Makefile'
 
 node('docker') {
     stage('Checkout') {
@@ -23,6 +23,7 @@ node('docker') {
         try {
             stage('Unit tests') {
                 ansiColor('xterm') {
+                    sh("chmod o+w .")
                     sh("${MAKE} test-containerized")
                 }
             }
