@@ -3,7 +3,6 @@ package endpoint_test
 import (
 	"context"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -25,7 +24,6 @@ import (
 
 func TestEndpoint(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Endpoint Suite")
 }
 
@@ -71,7 +69,7 @@ var _ = Describe("Endpoint", func() {
 
 		Context("PutMetric", func() {
 			It("is unimplemented", func() {
-				c, err := e.PutMetric(nil)
+				c, err := e.PutMetric(context.Background())
 				Ω(err).Should(HaveOccurred())
 				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutMetric is not supported")))
 				Ω(c).Should(BeNil())
@@ -208,7 +206,7 @@ var _ = Describe("Endpoint", func() {
 
 		Context("PutEvent", func() {
 			It("is unimplemented", func() {
-				c, err := e.PutEvent(nil)
+				c, err := e.PutEvent(context.Background())
 				Ω(err).Should(HaveOccurred())
 				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutEvent is not supported")))
 				Ω(c).Should(BeNil())

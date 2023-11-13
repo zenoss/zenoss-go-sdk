@@ -2,9 +2,7 @@ package integration_test
 
 import (
 	"context"
-	"io/ioutil"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -25,7 +23,6 @@ import (
 
 func TestIntegration(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Integration Suite")
 }
 
@@ -55,7 +52,7 @@ var _ = Describe("Integration", func() {
 
 			// Define multiple endpoints to test splitter.
 			clients = []*data_receiver.MockDataReceiverServiceClient{{}, {}}
-			endpoints = make([]data_receiver.DataReceiverServiceClient, len(clients), len(clients))
+			endpoints = make([]data_receiver.DataReceiverServiceClient, len(clients))
 			for i, client := range clients {
 				e, err := endpoint.New(endpoint.Config{TestClient: client})
 				Ω(err).ShouldNot(HaveOccurred())
@@ -208,7 +205,7 @@ var _ = Describe("Integration", func() {
 			// Load processor configuration from opencensus-grpc.yaml.
 			var config processor.Config
 
-			yamlFile, err := ioutil.ReadFile("opencensus-grpc.yaml")
+			yamlFile, err := os.ReadFile("opencensus-grpc.yaml")
 			Ω(err).ShouldNot(HaveOccurred())
 
 			err = yaml.Unmarshal(yamlFile, &config)

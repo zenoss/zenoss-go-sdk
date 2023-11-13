@@ -3,7 +3,6 @@ package log_test
 import (
 	"bytes"
 	"encoding/json"
-	"math/rand"
 	"os"
 	"testing"
 
@@ -16,7 +15,6 @@ import (
 
 func TestLog(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Log Suite")
 }
 

@@ -3,7 +3,6 @@ package proxy_test
 import (
 	"context"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -23,7 +22,6 @@ import (
 
 func TestProxy(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Proxy Suite")
 }
 
@@ -83,6 +81,7 @@ var _ = Describe("Proxy", func() {
 					AllowedAPIKeys: []string{"test"},
 					Output:         out,
 				})
+				Ω(err).ShouldNot(HaveOccurred())
 
 				r, err := p.PutMetrics(context.TODO(), metrics)
 				Ω(r).Should(BeNil())

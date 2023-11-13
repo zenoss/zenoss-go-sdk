@@ -1,7 +1,6 @@
 package tag_test
 
 import (
-	"math/rand"
 	"os"
 	"testing"
 
@@ -13,7 +12,6 @@ import (
 
 func TestTag(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Tag Suite")
 }
 

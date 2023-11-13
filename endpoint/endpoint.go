@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opencensus.io/plugin/ocgrpc"
@@ -161,7 +162,7 @@ type Endpoint struct {
 	regclient    data_registry.DataRegistryServiceClient
 	modelTracker *ttl.Tracker
 	tagMutators  []tag.Mutator
-	cache        *ttlcache.Cache[string, any]
+	cache        *ttlcache.Cache[string, MetricIDNameAndHash]
 
 	bundlers struct {
 		events         *bundler.Bundler
@@ -178,11 +179,11 @@ type MetricIDNameAndHash struct {
 }
 
 // initCache initialises the ttl cache used to store metric ids
-func initCache(cacheSizeLimit int, minTTL int, maxTTL int) *ttlcache.Cache[string, any] {
-	cache := ttlcache.New[string, any](
-		ttlcache.WithTTL[string, any](getCacheItemTTL(minTTL, maxTTL)),
-		ttlcache.WithCapacity[string, any](uint64(cacheSizeLimit)),
-		ttlcache.WithDisableTouchOnHit[string, any](),
+func initCache(cacheSizeLimit int, minTTL int, maxTTL int) *ttlcache.Cache[string, MetricIDNameAndHash] {
+	cache := ttlcache.New[string, MetricIDNameAndHash](
+		ttlcache.WithTTL[string, MetricIDNameAndHash](getCacheItemTTL(minTTL, maxTTL)),
+		ttlcache.WithCapacity[string, MetricIDNameAndHash](uint64(cacheSizeLimit)),
+		ttlcache.WithDisableTouchOnHit[string, MetricIDNameAndHash](),
 	)
 	return cache
 }
@@ -261,7 +262,7 @@ func New(config Config) (*Endpoint, error) {
 		regclient = data_registry.NewDataRegistryServiceClient(regconn)
 	}
 
-	var cache *ttlcache.Cache[string, any]
+	var cache *ttlcache.Cache[string, MetricIDNameAndHash]
 	if config.MinTTL != 0 && config.MaxTTL != 0 {
 		// config.CacheSizeLimit == 0 means no limit
 		cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
@@ -343,24 +344,22 @@ func (e *Endpoint) GetLoggerConfig() log.LoggerConfig {
 }
 
 // GetMetricCacheKey generates key to use for metric whose id is going to be cached
-func (e *Endpoint) GetMetricCacheKey(metric *data_receiver.Metric) string {
+func (*Endpoint) GetMetricCacheKey(metric *data_receiver.Metric) string {
 	dims := metric.Dimensions
-	keys := []string{}
+	keys := make([]string, 0, len(dims))
 	for k := range dims {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var flatDims bytes.Buffer
+
+	var flatDims strings.Builder
 	for _, k := range keys {
-		_, err := flatDims.WriteString(fmt.Sprintf("%s=%s,", k, dims[k]))
-		if err != nil {
-			log.Debug(e, log.Fields{"error": err}, "")
-		}
+		_, _ = fmt.Fprintf(&flatDims, "%s=%s,", k, dims[k])
 	}
 
-	localKey := fmt.Sprintf("%s:%s", metric.Metric, flatDims.String())
+	localKey := []byte(fmt.Sprintf("%s:%s", metric.Metric, flatDims.String()))
 	hash := murmur3.New128()
-	hash.Write([]byte(localKey))
+	hash.Write(localKey)
 	v1, v2 := hash.Sum128()
 	return strconv.FormatUint(v1, 10) + strconv.FormatUint(v2, 10)
 }
@@ -381,21 +380,25 @@ func tagExcluded(tag string, excludedTags []string) bool {
 // GetMetadataHash generates hash of metadata fields of the metric whose id is going to be cached
 func (e *Endpoint) GetMetadataHash(metric *data_receiver.Metric) string {
 	hasher := murmur3.New64()
-	var buf []byte
+
 	metadatafieldmap := metric.MetadataFields.GetFields()
 	keys := make([]string, 0, len(metadatafieldmap))
 	for k := range metadatafieldmap {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+
+	var buf bytes.Buffer
 	for _, k := range keys {
 		if tagExcluded(k, e.config.ExcludedTags) {
 			continue
 		}
-		localEntry := fmt.Sprintf("%s:%s", k, metadatafieldmap[k])
-		buf = append(buf, localEntry...)
+
+		_, _ = fmt.Fprintf(&buf, "%s:%s", k, metadatafieldmap[k])
 	}
-	hasher.Write(buf)
+
+	hasher.Write(buf.Bytes())
+
 	return strconv.FormatUint(hasher.Sum64(), 10)
 }
 
@@ -415,9 +418,9 @@ func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_recei
 			// cache hit, return metric with its id and name if metadata not changed
 			currentMetadataHash := e.GetMetadataHash(metric)
 			value := cacheentry.Value()
-			if currentMetadataHash == value.(MetricIDNameAndHash).hash {
+			if currentMetadataHash == value.hash {
 				cachedCompctMetric := &data_receiver.CompactMetric{
-					Id:        value.(MetricIDNameAndHash).id,
+					Id:        value.id,
 					Timestamp: metric.Timestamp,
 					Value:     metric.Value,
 				}
@@ -478,7 +481,7 @@ func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Me
 
 // registerMetrics will register metric using dataRegistry
 func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver.Metric) ([]bool, []MetricIDNameAndHash) {
-	successes := make([]bool, len(metrics), len(metrics))
+	successes := make([]bool, len(metrics))
 	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, 0, len(metrics))
 	registerMetricsresponse, err := e.CreateOrUpdateMetrics(ctx, metrics)
 	if err != nil {
@@ -561,14 +564,14 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metrics []*data_re
 func (e *Endpoint) PutEvents(ctx context.Context, events *data_receiver.Events, _ ...grpc.CallOption) (*data_receiver.EventStatusResult, error) {
 	var failedEventsCount, succeededEventsCount int32
 	var failedEvents []*data_receiver.EventError
-	var err error
 
 	if events.DetailedResponse {
 		failedEvents = make([]*data_receiver.EventError, 0, len(events.Events))
 	}
 
 	for _, event := range events.Events {
-		if err = e.bundlers.events.Add(event, 1); err != nil {
+		err := e.bundlers.events.Add(event, 1)
+		if err != nil {
 			failedEventsCount++
 
 			if events.DetailedResponse {

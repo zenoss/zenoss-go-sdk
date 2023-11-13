@@ -298,16 +298,12 @@ func (p *Proxy) checkAPIKey(ctx context.Context) error {
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return status.Error(
-			codes.Unauthenticated,
-			fmt.Sprintf("no metadata in context"))
+		return status.Error(codes.Unauthenticated, "no metadata in context")
 	}
 
 	apiKeys := md.Get(endpoint.APIKeyHeader)
 	if len(apiKeys) == 0 {
-		return status.Error(
-			codes.Unauthenticated,
-			fmt.Sprintf("no %q in context", endpoint.APIKeyHeader))
+		return status.Error(codes.Unauthenticated, fmt.Sprintf("no %q in context", endpoint.APIKeyHeader))
 	}
 
 	for _, apiKey := range apiKeys {

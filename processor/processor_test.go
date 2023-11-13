@@ -3,7 +3,6 @@ package processor_test
 import (
 	"context"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -25,7 +24,6 @@ import (
 
 func TestProcessor(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Processor Suite")
 }
 
