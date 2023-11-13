@@ -3,7 +3,6 @@ package endpoint_test
 import (
 	"context"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -25,7 +24,6 @@ import (
 
 func TestEndpoint(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Endpoint Suite")
 }
 
@@ -71,7 +69,7 @@ var _ = Describe("Endpoint", func() {
 
 		Context("PutMetric", func() {
 			It("is unimplemented", func() {
-				c, err := e.PutMetric(nil)
+				c, err := e.PutMetric(context.Background())
 				Ω(err).Should(HaveOccurred())
 				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutMetric is not supported")))
 				Ω(c).Should(BeNil())
@@ -114,7 +112,7 @@ var _ = Describe("Endpoint", func() {
 
 		Context("ConvertMetrics", func() {
 			It("converts canonical metrics to compact metrics", func() {
-				var responses = make([]*data_registry.RegisterMetricVerboseResponse, 0)
+				responses := make([]*data_registry.RegisterMetricVerboseResponse, 0)
 				verboseResponse := &data_registry.RegisterMetricVerboseResponse{
 					Response: &data_registry.RegisterMetricResponse{
 						InstanceId: "id123456canonical1",
@@ -131,7 +129,8 @@ var _ = Describe("Endpoint", func() {
 				regout.On("CreateOrUpdateMetrics", mock.Anything).
 					Return(regCreateOrUpdateStreamingClientMock, nil)
 				inputMetrics := []*data_receiver.Metric{
-					{Metric: "canonical1",
+					{
+						Metric:    "canonical1",
 						Value:     1,
 						Timestamp: time.Now().UnixNano() / 1e6,
 						Dimensions: map[string]string{
@@ -207,7 +206,7 @@ var _ = Describe("Endpoint", func() {
 
 		Context("PutEvent", func() {
 			It("is unimplemented", func() {
-				c, err := e.PutEvent(nil)
+				c, err := e.PutEvent(context.Background())
 				Ω(err).Should(HaveOccurred())
 				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutEvent is not supported")))
 				Ω(c).Should(BeNil())

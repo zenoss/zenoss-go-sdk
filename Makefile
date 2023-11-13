@@ -4,62 +4,47 @@ ifeq ($(HOME),/)
 	export HOME =
 endif
 
-GO				:= go
-GOBIN			:= $(GOPATH)/bin
-BASE            := $(GOPATH)/src/$(PACKAGE)
-COVERAGE_DIR	:= $(CURDIR)/coverage
+ROOTDIR					?= $(CURDIR)
+SHELL					:= /bin/bash
+GO						:= $(shell command -v go 2> /dev/null)
+GOFUMPT					:= $(shell command -v gofumpt 2> /dev/null)
+REVIVE					:= $(shell command -v revive 2> /dev/null)
+GINKGO					:= $(shell command -v ginkgo 2> /dev/null)
+GOCOV					:= $(shell command -v gocov 2> /dev/null)
+GOCOVXML				:= $(shell command -v gocov-xml 2> /dev/null)
+COVERAGE_DIR			:= $(CURDIR)/coverage
+ZENKIT_BUILD_VERSION	:= 1.17.0
+BUILD_IMG				:= zenoss/zenkit-build:$(ZENKIT_BUILD_VERSION)
+DOCKER_PARAMS			:=	--rm \
+							--volume $(ROOTDIR):/workspace/:rw \
+							--env CGO_ENABLED=1 \
+							--workdir /workspace/
+DOCKER_CMD				:= docker run -t $(DOCKER_PARAMS) $(BUILD_IMG)
 
-V = 0
-Q = $(if $(filter 1,$V),,@)
 M = $(shell printf "\033[34;1m▶\033[0m")
-
-.PHONY: default
-default: tools dependencies check test
-
-# Tools
-
-$(GOBIN):
-	@mkdir -p $@
-$(GOBIN)/%: $(GOBIN) | $(BASE)
-	@[ -x $@ ] || echo "$(M)" Installing $* && $(GO) get $(PACKAGE) 
-
-GOLINT = $(GOBIN)/golint
-$(GOBIN)/golint: PACKAGE=golang.org/x/lint/golint
-
-GINKGO = $(GOBIN)/ginkgo
-$(GOBIN)/ginkgo: PACKAGE=github.com/onsi/ginkgo/v2/ginkgo
-
-GOCOV = $(GOBIN)/gocov
-$(GOBIN)/gocov: PACKAGE=github.com/axw/gocov/...
-
-GOCOVXML = $(GOBIN)/gocov-xml
-$(GOBIN)/gocov-xml: PACKAGE=github.com/AlekSi/gocov-xml
-
-.PHONY: tools
-tools: $(GOLINT) $(GINKGO) $(GOCOV) $(GOCOVXML) ; $(info $(M) installed tools) @ ## Install tools.
-
-# Dependencies
-
-.PHONY: dependencies
-dependencies: ; $(info $(M) downloading dependencies…) @ ## Install dependencies with go mod download.
-	$Q go mod download
+RED = $(shell printf "\033[31;1m▶\033[0m")
 
 # Static Checks
 
-.PHONY: check
-check: fmt-check vet lint ; $(info $(M) static checks complete) @ ## Run all static checks.
-
-.PHONY: fmt-check
-fmt-check: ; $(info $(M) running gofmt…) @ ## Check all files with gofmt.
-	$Q [ -z "$$(gofmt -l -s .)" ] || (gofmt -d -e -s . ; exit 1)
-
-.PHONY: vet
-vet: ; $(info $(M) running go vet…) @ ## Run go vet on all packages.
-	$Q $(GO) vet $$($(GO) list ./...)
+.PHONY: fmt
+fmt:
+	@echo "$(M) gofumpt: running"
+	@if [[ "$(shell $(GOFUMPT) -l -w .)" ]]; then \
+		echo "$(RED) gofumpt: Please commit formatted files"; \
+		exit 1; \
+	else \
+		echo "$(M) gofumpt: files look good"; \
+	fi
 
 .PHONY: lint
-lint: | $(GOLINT) ; $(info $(M) running golint…) @ ## Check packages with golint.
-	$Q $(GOLINT) -set_exit_status $$($(GO) list ./...)
+lint: 
+	@echo "$(M) running revive linter…"
+	$(REVIVE) \
+		-config $(ROOTDIR)/.revive.toml \
+		-formatter=friendly \
+		-exclude $(ROOTDIR)/vendor/... \
+		$(ROOTDIR)/...
+	@echo "$(M) linted with revive linter"
 
 # Test
 
@@ -67,34 +52,24 @@ lint: | $(GOLINT) ; $(info $(M) running golint…) @ ## Check packages with goli
 test: COVERAGE_PROFILE := coverprofile.out
 test: COVERAGE_HTML    := $(COVERAGE_DIR)/index.html
 test: COVERAGE_XML     := $(COVERAGE_DIR)/coverage.xml
-test: | $(GINKGO) $(GOCOV) $(GOCOVXML) ; $(info $(M) running tests with coverage…) @ ## Execute tests with ginkgo. (including coverage)
-	$Q mkdir -p $(COVERAGE_DIR)
-	$Q $(GINKGO) -r -cover -covermode=count --junit-report=junit.xml
+test: fmt lint
+	@echo "Please ENABLE RACE DETECTOR"
+	@mkdir -p $(COVERAGE_DIR)
+	@$(GINKGO) \
+		run \
+		-r \
+		--tags integration \
+		--cover \
+		--coverprofile $(COVERAGE_PROFILE) \
+		--covermode=count \
+		--junit-report=junit.xml
 	$Q $(GO) tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
 	$Q $(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
+	@echo "Please ENABLE RACE DETECTOR"
 
-.PHONY: test-quick
-test-quick: | $(GINKGO) ; $(info $(M) running tests without coverage…) @ ## Execute tests with ginkgo. (no coverage)
-	$Q mkdir -p $(COVERAGE_DIR)
-	$Q $(GINKGO) -r
-
-.PHONY: test-watch
-test-watch: | $(GINKGO) ; $(info $(M) watching for changes with ginkgo…) @ ## Watch for changes and execute tests.
-	$Q mkdir -p $(COVERAGE_DIR)
-	$Q $(GINKGO) watch -r -cover -covermode=count
-
-# Fixes
-
-.PHONY: fix
-fix: mod-tidy fmt
-
-.PHONY: mod-tidy
-mod-tidy: ; $(info $(M) running go mod tidy…) @ ## Update dependencies with go mod tidy.
-	$Q go mod tidy
-
-.PHONY: fmt
-fmt: ; $(info $(M) running gofmt…) @ ## Run gofmt on all files.
-	$Q gofmt -l -w .
+.PHONY: test-containerized
+test-containerized:
+	$(DOCKER_CMD) make test
 
 # Misc
 
@@ -103,8 +78,3 @@ clean: ; $(info $(M) cleaning…)	@ ## Cleanup everything.
 	@rm -f junit.xml internal/junit.xml
 	@rm -f coverprofile.out internal/coverprofile.out
 	@rm -rf $(COVERAGE_DIR)
-
-.PHONY: help
-help:
-	@grep -hE '^[ a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-17s\033[0m %s\n", $$1, $$2}'

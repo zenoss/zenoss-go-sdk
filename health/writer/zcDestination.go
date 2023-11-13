@@ -154,7 +154,7 @@ func (d *ZCDestination) buildTargetMetadata() *structpb.Struct {
 }
 
 func logFn() endpointLog.Func {
-	return func(level endpointLog.Level, fields endpointLog.Fields, format string, args ...interface{}) {
+	return func(level endpointLog.Level, fields endpointLog.Fields, format string, args ...any) {
 		l := log.GetLogger()
 		var e *zerolog.Event
 

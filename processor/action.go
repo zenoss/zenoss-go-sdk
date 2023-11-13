@@ -44,7 +44,7 @@ const (
 )
 
 // ActionOptions is a container for ad hoc options for any action type.
-type ActionOptions map[string]interface{}
+type ActionOptions map[string]any
 
 // MetricActionConfig specifies a metric action.
 type MetricActionConfig struct {
@@ -111,7 +111,7 @@ func (a *MetricActionConfig) Apply(ctx context.Context, p *Processor, metric *da
 type TaggedMetricActionConfig struct {
 	Name    string
 	Type    string
-	Options map[string]interface{}
+	Options map[string]any
 }
 
 // GetName returns name for the TaggedMetricActionConfig.
@@ -158,7 +158,7 @@ func (a *TaggedMetricActionConfig) Apply(ctx context.Context, p *Processor, tagg
 type ModelActionConfig struct {
 	Name    string
 	Type    string
-	Options map[string]interface{}
+	Options map[string]any
 }
 
 // GetName returns name for the ModelActionConfig.
@@ -226,7 +226,7 @@ func modelString(model *data_receiver.Model) string {
 }
 
 func metadataFieldsString(metadataFields *_struct.Struct) string {
-	m := make(map[string]interface{}, len(metadataFields.GetFields()))
+	m := make(map[string]any, len(metadataFields.GetFields()))
 	for k, v := range metadataFields.GetFields() {
 		m[k] = unrollValue(v)
 	}

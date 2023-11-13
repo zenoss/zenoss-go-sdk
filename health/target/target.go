@@ -9,6 +9,8 @@ import (
 
 // New creates a new Target object
 // If you set tType an empty string it will have "default" value assgined
+//
+//revive:disable:argument-limit
 func New(
 	id, tType string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
 ) (*Target, error) {
@@ -38,6 +40,8 @@ func New(
 	}, nil
 }
 
+//revive:enable:argument-limit
+
 // Target keeps target data (such as target ID, metric IDs, etc.) and
 // configuration (such as whether to enable heartbeat)
 type Target struct {
@@ -56,8 +60,8 @@ type Target struct {
 
 // IsMeasureIDUnique searches through all metric and counter IDs and
 // returns false if such ID is already taken
-func (t *Target) IsMeasureIDUnique(ID string) bool {
-	return !(sdk_utils.ListContainsString(t.MetricIDs, ID) ||
-		sdk_utils.ListContainsString(t.CounterIDs, ID) ||
-		sdk_utils.ListContainsString(t.TotalCounterIDs, ID))
+func (t *Target) IsMeasureIDUnique(id string) bool {
+	return !(sdk_utils.ListContainsString(t.MetricIDs, id) ||
+		sdk_utils.ListContainsString(t.CounterIDs, id) ||
+		sdk_utils.ListContainsString(t.TotalCounterIDs, id))
 }

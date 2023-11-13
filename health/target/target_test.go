@@ -1,7 +1,6 @@
 package target_test
 
 import (
-	"math/rand"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -12,7 +11,6 @@ import (
 
 func TestHealthTarget(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Health Target Suite")
 }
 
@@ -23,9 +21,7 @@ var _ = Describe("Target Tests", func() {
 	)
 
 	Context("constructor", func() {
-		var (
-			metricIDs, counterIDs, tCounterIDs []string
-		)
+		var metricIDs, counterIDs, tCounterIDs []string
 		BeforeEach(func() {
 			metricIDs = []string{"someMetric"}
 			counterIDs = []string{"someCounter"}
@@ -46,9 +42,7 @@ var _ = Describe("Target Tests", func() {
 	})
 
 	Context("IsMeasureIDUnique method", func() {
-		var (
-			testTarget *target.Target
-		)
+		var testTarget *target.Target
 
 		BeforeEach(func() {
 			metricIDs := []string{"someMetric"}

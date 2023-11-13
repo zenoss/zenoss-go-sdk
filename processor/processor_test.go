@@ -3,7 +3,6 @@ package processor_test
 import (
 	"context"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -25,7 +24,6 @@ import (
 
 func TestProcessor(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Processor Suite")
 }
 
@@ -744,7 +742,8 @@ var _ = Describe("Processor", func() {
 			Context("Apply", func() {
 				It("applies action with implicit match", func() {
 					r = processor.MetricRuleConfig{
-						Actions: []processor.MetricActionConfig{{Type: "drop"}}}
+						Actions: []processor.MetricActionConfig{{Type: "drop"}},
+					}
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.Metric{Metric: "test"})
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
@@ -753,7 +752,8 @@ var _ = Describe("Processor", func() {
 				It("applies action with explicit match", func() {
 					r = processor.MetricRuleConfig{
 						Matches: []processor.MetricMatchConfig{{Metric: "test"}},
-						Actions: []processor.MetricActionConfig{{Type: "drop"}}}
+						Actions: []processor.MetricActionConfig{{Type: "drop"}},
+					}
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.Metric{Metric: "test"})
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
@@ -778,7 +778,8 @@ var _ = Describe("Processor", func() {
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.Metric{
 						Metric:     "test",
-						Dimensions: map[string]string{"source": "test"}})
+						Dimensions: map[string]string{"source": "test"},
+					})
 
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
 				})
@@ -801,7 +802,8 @@ var _ = Describe("Processor", func() {
 			Context("Apply", func() {
 				It("applies action with implicit match", func() {
 					r = processor.TaggedMetricRuleConfig{
-						Actions: []processor.TaggedMetricActionConfig{{Type: "drop"}}}
+						Actions: []processor.TaggedMetricActionConfig{{Type: "drop"}},
+					}
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.TaggedMetric{Metric: "test"})
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
@@ -810,7 +812,8 @@ var _ = Describe("Processor", func() {
 				It("applies action with explicit match", func() {
 					r = processor.TaggedMetricRuleConfig{
 						Matches: []processor.TaggedMetricMatchConfig{{Metric: "test"}},
-						Actions: []processor.TaggedMetricActionConfig{{Type: "drop"}}}
+						Actions: []processor.TaggedMetricActionConfig{{Type: "drop"}},
+					}
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.TaggedMetric{Metric: "test"})
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
@@ -835,7 +838,8 @@ var _ = Describe("Processor", func() {
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.TaggedMetric{
 						Metric: "test",
-						Tags:   map[string]string{"source": "test"}})
+						Tags:   map[string]string{"source": "test"},
+					})
 
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
 				})
@@ -857,10 +861,12 @@ var _ = Describe("Processor", func() {
 			Context("Apply", func() {
 				It("applies action with implicit match", func() {
 					r = processor.ModelRuleConfig{
-						Actions: []processor.ModelActionConfig{{Type: "drop"}}}
+						Actions: []processor.ModelActionConfig{{Type: "drop"}},
+					}
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.Model{
-						Dimensions: map[string]string{"source": "test"}})
+						Dimensions: map[string]string{"source": "test"},
+					})
 
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
 				})
@@ -868,11 +874,14 @@ var _ = Describe("Processor", func() {
 				It("applies action with explicit match", func() {
 					r = processor.ModelRuleConfig{
 						Matches: []processor.ModelMatchConfig{{
-							DimensionKeys: []string{"source"}}},
-						Actions: []processor.ModelActionConfig{{Type: "drop"}}}
+							DimensionKeys: []string{"source"},
+						}},
+						Actions: []processor.ModelActionConfig{{Type: "drop"}},
+					}
 
 					err = r.Apply(context.TODO(), nil, &data_receiver.Model{
-						Dimensions: map[string]string{"source": "test"}})
+						Dimensions: map[string]string{"source": "test"},
+					})
 
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
 				})
@@ -897,7 +906,9 @@ var _ = Describe("Processor", func() {
 					err = r.Apply(context.TODO(), nil, &data_receiver.Model{
 						Dimensions: map[string]string{
 							"source": "test",
-							"app":    "test"}})
+							"app":    "test",
+						},
+					})
 
 					Ω(err).Should(Equal(&processor.SignalDrop{}))
 				})
@@ -1336,7 +1347,8 @@ var _ = Describe("Processor", func() {
 				BeforeEach(func() {
 					action = processor.MetricActionConfig{
 						Type: processor.ActionTypeLog,
-						Name: "test"}
+						Name: "test",
+					}
 
 					metric = &data_receiver.Metric{
 						Metric:     "test",
@@ -1388,7 +1400,9 @@ var _ = Describe("Processor", func() {
 					action = processor.MetricActionConfig{
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: map[string]interface{}{
-							"key": 0}}
+							"key": 0,
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(HaveOccurred())
@@ -1398,7 +1412,8 @@ var _ = Describe("Processor", func() {
 				It("fails without a key", func() {
 					action = processor.MetricActionConfig{
 						Type:    processor.ActionTypeAppendToMetadataField,
-						Options: processor.ActionOptions{}}
+						Options: processor.ActionOptions{},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(MatchError(`missing "key"`))
@@ -1409,7 +1424,9 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":           "test",
-							"valueTemplate": "{{{invalid"}}
+							"valueTemplate": "{{{invalid",
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(MatchError(`line 1: unmatched open tag`))
@@ -1420,7 +1437,9 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":           "test",
-							"valueTemplate": "{{{dimensionX}}}/{{{metadataX}}}"}}
+							"valueTemplate": "{{{dimensionX}}}/{{{metadataX}}}",
+						},
+					}
 
 					metric = &data_receiver.Metric{
 						Dimensions:     map[string]string{"dimension": "value"},
@@ -1428,14 +1447,16 @@ var _ = Describe("Processor", func() {
 					}
 
 					err = action.Apply(ctx, p, metric)
-					Ω(err).Should(MatchError(`Missing variable "dimensionX"`))
+					Ω(err.Error()).Should(Equal(`missing variable "dimensionX"`))
 				})
 
 				It("fails without value or valueTemplate", func() {
 					action = processor.MetricActionConfig{
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
-							"key": "test"}}
+							"key": "test",
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(MatchError(`missing "value" or "valueTemplate"`))
@@ -1447,7 +1468,9 @@ var _ = Describe("Processor", func() {
 						Options: processor.ActionOptions{
 							"key":           "test",
 							"value":         "value",
-							"valueTemplate": "{{{value}}}"}}
+							"valueTemplate": "{{{value}}}",
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(MatchError(`setting "value" and "valueTemplate" is ambiguous`))
@@ -1458,11 +1481,14 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":   "test",
-							"value": "value"}}
+							"value": "value",
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{
 						MetadataFields: metadata.FromStringMap(
-							map[string]string{"test": "value"})})
+							map[string]string{"test": "value"}),
+					})
 
 					Ω(err).Should(MatchError(`unable to append "test" field: field is not a list`))
 				})
@@ -1472,7 +1498,9 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":   "test",
-							"value": "value"}}
+							"value": "value",
+						},
+					}
 
 					metric = &data_receiver.Metric{}
 
@@ -1481,7 +1509,8 @@ var _ = Describe("Processor", func() {
 
 					Ω(metric.GetMetadataFields()).Should(Equal(
 						metadata.MustFromMap(map[string]interface{}{
-							"test": []string{"value"}})))
+							"test": []string{"value"},
+						})))
 				})
 
 				It("succeeds when metadata field was a list", func() {
@@ -1489,18 +1518,23 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":   "test",
-							"value": "value2"}}
+							"value": "value2",
+						},
+					}
 
 					metric = &data_receiver.Metric{
 						MetadataFields: metadata.MustFromMap(map[string]interface{}{
-							"test": []string{"value1"}})}
+							"test": []string{"value1"},
+						}),
+					}
 
 					err = action.Apply(ctx, p, metric)
 					Ω(err).ShouldNot(HaveOccurred())
 
 					Ω(metric.GetMetadataFields()).Should(Equal(
 						metadata.MustFromMap(map[string]interface{}{
-							"test": []string{"value1", "value2"}})))
+							"test": []string{"value1", "value2"},
+						})))
 				})
 
 				It("succeeds with valueTemplate", func() {
@@ -1508,18 +1542,22 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":           "test",
-							"valueTemplate": "{{{dimension1}}}/{{{metadata1}}}"}}
+							"valueTemplate": "{{{dimension1}}}/{{{metadata1}}}",
+						},
+					}
 
 					metric = &data_receiver.Metric{
 						Dimensions:     map[string]string{"dimension1": "value"},
-						MetadataFields: metadata.FromStringMap(map[string]string{"metadata1": "value"})}
+						MetadataFields: metadata.FromStringMap(map[string]string{"metadata1": "value"}),
+					}
 
 					err = action.Apply(ctx, p, metric)
 					Ω(err).ShouldNot(HaveOccurred())
 					Ω(metric.GetMetadataFields()).Should(Equal(
 						metadata.MustFromMap(map[string]interface{}{
 							"metadata1": "value",
-							"test":      []string{"value/value"}})))
+							"test":      []string{"value/value"},
+						})))
 				})
 			})
 
@@ -1528,7 +1566,9 @@ var _ = Describe("Processor", func() {
 					action = processor.MetricActionConfig{
 						Type: processor.ActionTypeCreateModel,
 						Options: map[string]interface{}{
-							"nameTemplate": 0}}
+							"nameTemplate": 0,
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(HaveOccurred())
@@ -1539,7 +1579,9 @@ var _ = Describe("Processor", func() {
 					action = processor.MetricActionConfig{
 						Type: processor.ActionTypeCreateModel,
 						Options: processor.ActionOptions{
-							"nameTemplate": "{{{invalid"}}
+							"nameTemplate": "{{{invalid",
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Metric{})
 					Ω(err).Should(MatchError(`line 1: unmatched open tag`))
@@ -1549,7 +1591,9 @@ var _ = Describe("Processor", func() {
 					action = processor.MetricActionConfig{
 						Type: processor.ActionTypeCreateModel,
 						Options: processor.ActionOptions{
-							"nameTemplate": "{{{dimensionX}}}/{{{metadataX}}}"}}
+							"nameTemplate": "{{{dimensionX}}}/{{{metadataX}}}",
+						},
+					}
 
 					metric = &data_receiver.Metric{
 						Dimensions:     map[string]string{"dimension": "value"},
@@ -1557,7 +1601,7 @@ var _ = Describe("Processor", func() {
 					}
 
 					err = action.Apply(ctx, p, metric)
-					Ω(err).Should(MatchError(`Missing variable "dimensionX"`))
+					Ω(err.Error()).Should(Equal(`missing variable "dimensionX"`))
 				})
 
 				It("succeeds with defaults", func() {
@@ -1691,7 +1735,8 @@ var _ = Describe("Processor", func() {
 				BeforeEach(func() {
 					action = processor.TaggedMetricActionConfig{
 						Type: processor.ActionTypeLog,
-						Name: "test"}
+						Name: "test",
+					}
 
 					taggedMetric = &data_receiver.TaggedMetric{
 						Metric: "test",
@@ -1737,7 +1782,9 @@ var _ = Describe("Processor", func() {
 					action = processor.TaggedMetricActionConfig{
 						Type: processor.ActionTypeCopyToMetric,
 						Options: map[string]interface{}{
-							"metadataKeys": "test"}}
+							"metadataKeys": "test",
+						},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.TaggedMetric{})
 					Ω(err).Should(HaveOccurred())
@@ -1849,7 +1896,8 @@ var _ = Describe("Processor", func() {
 				BeforeEach(func() {
 					action = processor.ModelActionConfig{
 						Type: processor.ActionTypeLog,
-						Name: "test"}
+						Name: "test",
+					}
 
 					model = &data_receiver.Model{
 						Dimensions:     map[string]string{"test": "value"},
@@ -1894,7 +1942,8 @@ var _ = Describe("Processor", func() {
 				It("fails without a key", func() {
 					action = processor.ModelActionConfig{
 						Type:    processor.ActionTypeAppendToMetadataField,
-						Options: processor.ActionOptions{}}
+						Options: processor.ActionOptions{},
+					}
 
 					err = action.Apply(ctx, p, &data_receiver.Model{})
 					Ω(err).Should(MatchError(`missing "key"`))
@@ -1905,7 +1954,9 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":           "test",
-							"valueTemplate": "{{{dimensionX}}}/{{{metadataX}}}"}}
+							"valueTemplate": "{{{dimensionX}}}/{{{metadataX}}}",
+						},
+					}
 
 					model = &data_receiver.Model{
 						Dimensions:     map[string]string{"dimension": "value"},
@@ -1913,7 +1964,7 @@ var _ = Describe("Processor", func() {
 					}
 
 					err = action.Apply(ctx, p, model)
-					Ω(err).Should(MatchError(`Missing variable "dimensionX"`))
+					Ω(err.Error()).Should(Equal(`missing variable "dimensionX"`))
 				})
 
 				It("succeeds when metadata field was empty", func() {
@@ -1921,7 +1972,9 @@ var _ = Describe("Processor", func() {
 						Type: processor.ActionTypeAppendToMetadataField,
 						Options: processor.ActionOptions{
 							"key":   "test",
-							"value": "value"}}
+							"value": "value",
+						},
+					}
 
 					model = &data_receiver.Model{}
 
@@ -1930,7 +1983,8 @@ var _ = Describe("Processor", func() {
 
 					Ω(model.GetMetadataFields()).Should(Equal(
 						metadata.MustFromMap(map[string]interface{}{
-							"test": []string{"value"}})))
+							"test": []string{"value"},
+						})))
 				})
 
 				// Other cases handled under MetricActionConfig.

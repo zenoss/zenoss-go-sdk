@@ -7,10 +7,10 @@ import (
 
 type (
 	// Fields is a type alias for a map of logging fields.
-	Fields = map[string]interface{}
+	Fields = map[string]any
 
 	// Func is a type alias for a log handling function.
-	Func = func(level Level, fields Fields, format string, args ...interface{})
+	Func = func(level Level, fields Fields, format string, args ...any)
 
 	// Level is a type alias for a logging level.
 	Level = int
@@ -38,7 +38,7 @@ const (
 
 var (
 	// GlobalFields can be set to globally set global fields for zenoss-go-sdk logging.
-	GlobalFields map[string]interface{}
+	GlobalFields map[string]any
 
 	// GlobalFunc can be set to globally set a custom logging function for zenoss-go-sdk.
 	// Default: DefaultFunc
@@ -51,14 +51,12 @@ var (
 
 // Logger defines an interface for a thing that supports logging.
 type Logger interface {
-
 	// Return the logger's LoggerConfig.
 	GetLoggerConfig() LoggerConfig
 }
 
 // LoggerConfig specifies configuration for loggers.
 type LoggerConfig struct {
-
 	// LogFields are fields to be included with each log.
 	Fields Fields
 
@@ -70,27 +68,29 @@ type LoggerConfig struct {
 }
 
 // Error logs an ErrorLevel message.
-func Error(o Logger, fields Fields, format string, args ...interface{}) {
+func Error(o Logger, fields Fields, format string, args ...any) {
 	Log(o, LevelError, fields, format, args...)
 }
 
 // Warning logs a WarningLevel message.
-func Warning(o Logger, fields Fields, format string, args ...interface{}) {
+func Warning(o Logger, fields Fields, format string, args ...any) {
 	Log(o, LevelWarning, fields, format, args...)
 }
 
 // Info logs an InfoLevel message.
-func Info(o Logger, fields Fields, format string, args ...interface{}) {
+func Info(o Logger, fields Fields, format string, args ...any) {
 	Log(o, LevelInfo, fields, format, args...)
 }
 
 // Debug logs a DebugLevel message.
-func Debug(o Logger, fields Fields, format string, args ...interface{}) {
+func Debug(o Logger, fields Fields, format string, args ...any) {
 	Log(o, LevelDebug, fields, format, args...)
 }
 
 // Log logs a message at the specified level.
-func Log(o Logger, level Level, fields Fields, format string, args ...interface{}) {
+//
+//revive:disable:argument-limit
+func Log(o Logger, level Level, fields Fields, format string, args ...any) {
 	lev := getEffectiveLevel(o)
 	if lev == LevelUnset || lev == LevelDisabled {
 		return
@@ -104,9 +104,11 @@ func Log(o Logger, level Level, fields Fields, format string, args ...interface{
 	fn(level, getEffectiveFields(o, fields), format, args...)
 }
 
+//revive:enable:argument-limit
+
 // DefaultFunc is the default logging function.
 // Overridden by GlobalFunc.
-func DefaultFunc(level Level, fields Fields, format string, args ...interface{}) {
+func DefaultFunc(level Level, fields Fields, format string, args ...any) {
 	if level >= GlobalLevel {
 		if len(fields) > 0 {
 			log.Printf("%s fields=%v", fmt.Sprintf(format, args...), fields)

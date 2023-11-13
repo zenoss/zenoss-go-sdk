@@ -42,7 +42,7 @@ func NewActionCreateModel(options ActionOptions) (*ActionCreateModel, error) {
 
 // ApplyToMetric applies a "create-model" action to a metric.
 func (a *ActionCreateModel) ApplyToMetric(metric *data_receiver.Metric) (*data_receiver.Model, error) {
-	dropMetadataKeysMap := make(map[string]interface{}, len(a.DropMetadataKeys))
+	dropMetadataKeysMap := make(map[string]any, len(a.DropMetadataKeys))
 	for _, key := range a.DropMetadataKeys {
 		dropMetadataKeysMap[key] = nil
 	}
@@ -138,7 +138,7 @@ func (a *ActionAppendToMetadataField) ApplyToModel(model *data_receiver.Model) e
 	return err
 }
 
-func (a *ActionAppendToMetadataField) applyToMetadataFields(metadataFields *_struct.Struct, templateContext interface{}) (*_struct.Struct, error) {
+func (a *ActionAppendToMetadataField) applyToMetadataFields(metadataFields *_struct.Struct, templateContext any) (*_struct.Struct, error) {
 	if metadataFields == nil {
 		metadataFields = metadata.FromStringMap(nil)
 	}
@@ -175,7 +175,7 @@ func (a *ActionAppendToMetadataField) applyToMetadataFields(metadataFields *_str
 // ActionCopyToMetric specifies the options for a "copy-to-metric" action.
 type ActionCopyToMetric struct {
 	MetadataKeys   []string
-	metadataKeyMap map[string]interface{}
+	metadataKeyMap map[string]any
 }
 
 // NewActionCopyToMetric returns a new "copy-to-metric" action.
@@ -187,7 +187,7 @@ func NewActionCopyToMetric(options ActionOptions) (*ActionCopyToMetric, error) {
 	}
 
 	// Make a map from the list for constant-time lookups.
-	metadataKeyMap := make(map[string]interface{})
+	metadataKeyMap := make(map[string]any)
 	for _, k := range a.MetadataKeys {
 		metadataKeyMap[k] = nil
 	}
@@ -225,8 +225,8 @@ type dimensionsAndMetadataFields interface {
 	GetMetadataFields() *_struct.Struct
 }
 
-func getTemplateContext(o dimensionsAndMetadataFields) map[string]interface{} {
-	templateContext := make(map[string]interface{})
+func getTemplateContext(o dimensionsAndMetadataFields) map[string]any {
+	templateContext := make(map[string]any)
 
 	sanitize := func(s string) string {
 		// Mustache can't access context keys with dots in their name.
@@ -245,7 +245,7 @@ func getTemplateContext(o dimensionsAndMetadataFields) map[string]interface{} {
 	return templateContext
 }
 
-func unrollValue(v *_struct.Value) interface{} {
+func unrollValue(v *_struct.Value) any {
 	switch v.Kind.(type) {
 	case *_struct.Value_StringValue:
 		return v.GetStringValue()
@@ -254,7 +254,7 @@ func unrollValue(v *_struct.Value) interface{} {
 	case *_struct.Value_BoolValue:
 		return v.GetBoolValue()
 	case *_struct.Value_ListValue:
-		l := make([]interface{}, len(v.GetListValue().GetValues()))
+		l := make([]any, len(v.GetListValue().GetValues()))
 		for i, value := range v.GetListValue().GetValues() {
 			l[i] = unrollValue(value)
 		}

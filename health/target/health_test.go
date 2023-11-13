@@ -8,9 +8,7 @@ import (
 )
 
 var _ = Describe("Target's Health Constructor", func() {
-	var (
-		id = "target.id"
-	)
+	id := "target.id"
 
 	It("should return a new Health", func() {
 		health := target.NewHealth(id, utils.DefaultTargetType)

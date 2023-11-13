@@ -15,7 +15,7 @@ type (
 )
 
 // FromMap attempts to return a protobuf Struct given an interface map.
-func FromMap(m map[string]interface{}) (*Fields, error) {
+func FromMap(m map[string]any) (*Fields, error) {
 	fields := map[string]*Value{}
 
 	for k, v := range m {
@@ -40,12 +40,13 @@ func FromMap(m map[string]interface{}) (*Fields, error) {
 
 // MustFromMap is like FromMap, but panics on error.
 // Should only be used in testing or cases where the contents of "m" are known to be safe.
-func MustFromMap(m map[string]interface{}) *Fields {
-	if r, err := FromMap(m); err != nil {
+func MustFromMap(m map[string]any) *Fields {
+	r, err := FromMap(m)
+	if err != nil {
 		panic(err)
-	} else {
-		return r
 	}
+
+	return r
 }
 
 // FromStringMap returns a protobuf Struct given a string-to-string map.
@@ -78,7 +79,7 @@ func ValueFromNil() *Value {
 }
 
 // FromNumber returns a protobuf NumberValue given a numeric value.
-func FromNumber(n interface{}) *Value {
+func FromNumber(n any) *Value {
 	var f float64
 	switch i := n.(type) {
 	case float32:

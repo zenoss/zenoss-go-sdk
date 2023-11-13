@@ -1,7 +1,6 @@
 package utils_test
 
 import (
-	"math/rand"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -11,7 +10,6 @@ import (
 
 func TestStringUtils(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "String Utils Suite")
 }
 

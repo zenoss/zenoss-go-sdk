@@ -1,9 +1,7 @@
 package log_test
 
 import (
-	"fmt"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 
@@ -16,14 +14,11 @@ import (
 
 func TestLog(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Log Suite")
 }
 
-var (
-	// Ensure MockLogger implements log.Logger interface.
-	_ log.Logger = (*MockLogger)(nil)
-)
+// Ensure MockLogger implements log.Logger interface.
+var _ log.Logger = (*MockLogger)(nil)
 
 type MockLogger struct {
 	LoggerConfig log.LoggerConfig
@@ -132,7 +127,7 @@ var _ = Describe("Log", func() {
 				LoggerConfig: log.LoggerConfig{
 					Fields: log.Fields{"logger": "value"},
 					Func: func(level log.Level, fields log.Fields, format string, args ...interface{}) {
-						stdlog.Printf(fmt.Sprintf("custom %s fields=%v", format, fields))
+						stdlog.Printf("custom %s fields=%v", format, fields)
 					},
 					Level: log.LevelDebug,
 				},

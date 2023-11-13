@@ -3,7 +3,6 @@ package splitter_test
 import (
 	"context"
 	stdlog "log"
-	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -23,7 +22,6 @@ import (
 
 func TestSplitter(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Splitter Suite")
 }
 
@@ -75,7 +73,7 @@ var _ = Describe("Splitter", func() {
 
 		Context("PutMetric", func() {
 			It("is unimplemented", func() {
-				c, err := s.PutMetric(nil)
+				c, err := s.PutMetric(context.Background())
 				Ω(err).Should(HaveOccurred())
 				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutMetric is not supported")))
 				Ω(c).Should(BeNil())
@@ -135,7 +133,7 @@ var _ = Describe("Splitter", func() {
 
 		Context("PutEvent", func() {
 			It("is unimplemented", func() {
-				c, err := s.PutEvent(nil)
+				c, err := s.PutEvent(context.Background())
 				Ω(err).Should(HaveOccurred())
 				Ω(err).Should(Equal(status.Error(codes.Unimplemented, "PutEvent is not supported")))
 				Ω(c).Should(BeNil())

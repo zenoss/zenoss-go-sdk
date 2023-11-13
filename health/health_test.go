@@ -2,7 +2,6 @@ package health_test
 
 import (
 	"context"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 
 func TestHealth(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "Health Framework Suite")
 }
 

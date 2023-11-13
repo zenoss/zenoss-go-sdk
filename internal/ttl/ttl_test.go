@@ -1,7 +1,6 @@
 package ttl_test
 
 import (
-	"math/rand"
 	"testing"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 
 func TestTTL(t *testing.T) {
 	RegisterFailHandler(Fail)
-	rand.Seed(GinkgoRandomSeed())
 	RunSpecs(t, "TTL Suite")
 }
 
