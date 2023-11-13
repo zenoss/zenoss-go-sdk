@@ -55,7 +55,6 @@ test: COVERAGE_XML     := $(COVERAGE_DIR)/coverage.xml
 test: fmt lint
 	@echo "Please ENABLE RACE DETECTOR"
 	@mkdir -p $(COVERAGE_DIR)
-	@chmod -R o+w $(COVERAGE_DIR)
 	@$(GINKGO) \
 		run \
 		-r \
