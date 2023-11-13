@@ -26,7 +26,6 @@ node('docker') {
                     sh("mkdir ./coverage/")
                     sh("chmod -R o+w .")
                     sh("${MAKE} test-containerized")
-                    sh("chmod -R o+w .")
                 }
             }
 
