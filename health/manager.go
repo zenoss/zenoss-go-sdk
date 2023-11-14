@@ -101,17 +101,23 @@ type healthManager struct {
 	// channel that used by shutdown call to stop the manager
 	stopSig chan struct{}
 	// used to wait for manager processes to stop so we can mark started as false in a right time
-	wg      *sync.WaitGroup
+	wg *sync.WaitGroup
+
+	mu      sync.Mutex
 	started bool
 }
 
 func (hm *healthManager) Start(
-	ctx context.Context, measureOut <-chan *TargetMeasurement,
-	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
+	ctx context.Context,
+	measureOut <-chan *TargetMeasurement,
+	healthIn chan<- *target.Health,
+	targetIn chan<- *target.Target,
 ) {
+	hm.mu.Lock()
 	hm.targetIn = targetIn
 	hm.healthIn = healthIn
 	hm.stopSig = make(chan struct{})
+	hm.mu.Unlock()
 
 	hm.wg.Add(1)
 	go func() {
@@ -136,6 +142,8 @@ func (hm *healthManager) Start(
 }
 
 func (hm *healthManager) Shutdown() {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
 	close(hm.stopSig)
 	<-hm.stopWait
 	close(hm.targetIn)
@@ -158,6 +166,9 @@ func (hm *healthManager) AddTargets(targets []*target.Target) {
 }
 
 func (hm *healthManager) sendTargetsInfo() {
+	hm.registry.lock()
+	defer hm.registry.unlock()
+
 	for _, rawHealth := range hm.registry.getRawHealthMap() {
 		hm.targetIn <- rawHealth.target
 	}
@@ -175,10 +186,15 @@ func (hm *healthManager) listenMeasurements(ctx context.Context, measurements <-
 				log.Warn().Msg("Measurements channel closed. Stop listening")
 				return
 			}
+
+			hm.mu.Lock()
+
 			err := hm.updateTargetHealthData(measurement)
 			if err != nil {
 				log.Error().AnErr("error", err).Msgf("Unable to update target with id %s", measurement.TargetID)
 			}
+
+			hm.mu.Unlock()
 		case <-hm.stopSig:
 			return
 		case <-ctx.Done():
