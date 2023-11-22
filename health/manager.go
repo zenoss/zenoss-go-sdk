@@ -104,6 +104,7 @@ type healthManager struct {
 	wg *sync.WaitGroup
 
 	mu      sync.Mutex
+	smu     sync.Mutex
 	started bool
 }
 
@@ -131,10 +132,14 @@ func (hm *healthManager) Start(
 		hm.healthForwarder(ctx, healthIn)
 	}()
 
+	hm.smu.Lock()
 	hm.started = true
+	hm.smu.Unlock()
 	go func() {
 		hm.wg.Wait()
+		hm.smu.Lock()
 		hm.started = false
+		hm.smu.Unlock()
 		hm.stopWait <- struct{}{}
 	}()
 
@@ -150,6 +155,8 @@ func (hm *healthManager) Shutdown() {
 }
 
 func (hm *healthManager) IsStarted() bool {
+	hm.smu.Lock()
+	defer hm.smu.Unlock()
 	return hm.started
 }
 
