@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
@@ -49,6 +50,7 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 	go m.Start(ctx, measurementsCh, healthCh, targetCh)
 
+	writer.Addwg()
 	go writer.Start(ctx, healthCh, targetCh)
 
 	return func() {
@@ -104,8 +106,7 @@ type healthManager struct {
 	wg *sync.WaitGroup
 
 	mu      sync.Mutex
-	smu     sync.Mutex
-	started bool
+	started atomic.Bool
 }
 
 func (hm *healthManager) Start(
@@ -132,14 +133,10 @@ func (hm *healthManager) Start(
 		hm.healthForwarder(ctx, healthIn)
 	}()
 
-	hm.smu.Lock()
-	hm.started = true
-	hm.smu.Unlock()
+	hm.started.Store(true)
 	go func() {
 		hm.wg.Wait()
-		hm.smu.Lock()
-		hm.started = false
-		hm.smu.Unlock()
+		hm.started.Store(false)
 		hm.stopWait <- struct{}{}
 	}()
 
@@ -155,9 +152,7 @@ func (hm *healthManager) Shutdown() {
 }
 
 func (hm *healthManager) IsStarted() bool {
-	hm.smu.Lock()
-	defer hm.smu.Unlock()
-	return hm.started
+	return hm.started.Load()
 }
 
 func (hm *healthManager) AddTargets(targets []*target.Target) {
@@ -166,7 +161,7 @@ func (hm *healthManager) AddTargets(targets []*target.Target) {
 
 	for _, newTarget := range targets {
 		hm.registry.setRawHealthForTarget(newRawHealth(newTarget))
-		if hm.started {
+		if hm.IsStarted() {
 			hm.targetIn <- newTarget
 		}
 	}

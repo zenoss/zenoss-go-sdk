@@ -20,6 +20,8 @@ type HealthWriter interface {
 	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target)
 	// Shutdown method gently terminates the writer
 	Shutdown()
+
+	Addwg()
 }
 
 // New creates a new HealthWriter instance.
@@ -42,7 +44,6 @@ type writer struct {
 }
 
 func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target) {
-	w.wg.Add(1)
 	defer w.wg.Done()
 
 	for {
@@ -74,6 +75,10 @@ func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targ
 }
 
 func (w *writer) Shutdown() {
+	defer w.wg.Wait()
 	close(w.stopSig)
-	w.wg.Wait()
+}
+
+func (w *writer) Addwg() {
+	w.wg.Add(1)
 }
