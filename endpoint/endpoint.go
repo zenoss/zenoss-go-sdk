@@ -263,10 +263,15 @@ func New(config Config) (*Endpoint, error) {
 	}
 
 	var cache *ttlcache.Cache[string, MetricIDNameAndHash]
-	if config.MinTTL != 0 && config.MaxTTL != 0 {
-		// config.CacheSizeLimit == 0 means no limit
-		cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
+	if config.MinTTL <= 0 {
+		minTTl := time.Duration(0.1 * float64(config.ModelTTL))
+		config.MinTTL = int(minTTl.Seconds())
 	}
+	if config.MaxTTL <= 0 {
+		maxTTL := time.Duration(0.9 * float64(config.ModelTTL))
+		config.MaxTTL = int(maxTTL.Seconds())
+	}
+	cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
 
 	e := &Endpoint{
 		config:       config,

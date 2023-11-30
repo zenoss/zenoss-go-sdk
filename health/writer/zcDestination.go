@@ -30,7 +30,7 @@ func NewZCDestination(config *ZCDestinationConfig) (*ZCDestination, error) {
 
 	if config.UseCompact &&
 		(config.EndpointConfig.MinTTL == 0 || config.EndpointConfig.MaxTTL == 0) {
-		log.GetLogger().Debug().Msg("not all cache configs set. Disabling compact metrics")
+		log.GetLogger().Error().Msg("not all cache configs set. Disabling compact metrics")
 		config.UseCompact = false
 	}
 
