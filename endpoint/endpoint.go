@@ -56,8 +56,12 @@ const (
 	// Overridden by Config.BundleConfig.BundleDelayThreshold.
 	DefaultBundleDelayThreshold = 1 * time.Second
 
+	// DefaultMinTTL is the default minimum TTL for local cache.
+	// Overridden by Config.MinTTL.
 	DefaultMinTTL = 6 * time.Minute
 
+	// DefaultMaxTTL is the default maximum TTL for local cache.
+	// Overridden by Config.MaxTTL.
 	DefaultMaxTTL = 54 * time.Minute
 
 	// APIKeyHeader is the gRPC header field containing a Zenoss API key.
