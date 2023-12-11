@@ -58,11 +58,11 @@ const (
 
 	// DefaultMinTTL is the default minimum TTL for local cache.
 	// Overridden by Config.MinTTL.
-	DefaultMinTTL = 6 * time.Minute
+	DefaultMinTTL = 6 * time.Hour
 
 	// DefaultMaxTTL is the default maximum TTL for local cache.
 	// Overridden by Config.MaxTTL.
-	DefaultMaxTTL = 54 * time.Minute
+	DefaultMaxTTL = 12 * time.Hour
 
 	// APIKeyHeader is the gRPC header field containing a Zenoss API key.
 	APIKeyHeader = "zenoss-api-key"
@@ -122,11 +122,13 @@ type Config struct {
 	TestRegClient data_registry.DataRegistryServiceClient
 
 	// Min TTL for local cache
-	// Default: 6 min
+	//
+	// Default: 6 hour
 	MinTTL int `yaml:"minTTL"`
 
 	// Max TTL for local cache
-	// Default: 54 min
+	//
+	// Default: 12 hour
 	MaxTTL int `yaml:"maxTTL"`
 
 	// CacheSizeLimit for local cache
@@ -189,23 +191,25 @@ type MetricIDNameAndHash struct {
 }
 
 // initCache initialises the ttl cache used to store metric ids
-func initCache(cacheSizeLimit int, minTTL int, maxTTL int) *ttlcache.Cache[string, MetricIDNameAndHash] {
-	cache := ttlcache.New[string, MetricIDNameAndHash](
+func initCache(cacheSizeLimit int, minTTL, maxTTL time.Duration) *ttlcache.Cache[string, MetricIDNameAndHash] {
+	return ttlcache.New[string, MetricIDNameAndHash](
 		ttlcache.WithTTL[string, MetricIDNameAndHash](getCacheItemTTL(minTTL, maxTTL)),
 		ttlcache.WithCapacity[string, MetricIDNameAndHash](uint64(cacheSizeLimit)),
 		ttlcache.WithDisableTouchOnHit[string, MetricIDNameAndHash](),
 	)
-	return cache
 }
 
-// getCacheItemTTL gets a ttl selected at randon within max and min ttl limits
-func getCacheItemTTL(minTTL int, maxTTL int) time.Duration {
-	return time.Duration(getRandInRange(minTTL, maxTTL)) * time.Second
+func getCacheItemTTLCompat(minTTL, maxTTL int) time.Duration {
+	return getCacheItemTTL(time.Duration(minTTL)*time.Second, time.Duration(maxTTL)*time.Second)
 }
 
-// getRandInRange gets a random number in range
-func getRandInRange(min, max int) int {
-	return rand.Intn(max-min) + min
+// getCacheItemTTL gets a ttl selected at random within max and min ttl limits
+func getCacheItemTTL(minTTL, maxTTL time.Duration) time.Duration {
+	return time.Duration(getRandInRange(int64(minTTL), int64(maxTTL)))
+}
+
+func getRandInRange(min, max int64) int64 {
+	return rand.Int63n(max-min) + min
 }
 
 // New returns a new Endpoint with specified configuration.
@@ -279,7 +283,7 @@ func New(config Config) (*Endpoint, error) {
 	if config.MaxTTL <= 0 {
 		config.MaxTTL = int(DefaultMaxTTL.Seconds())
 	}
-	cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
+	cache = initCache(config.CacheSizeLimit, time.Duration(config.MinTTL)*time.Second, time.Duration(config.MaxTTL))
 
 	e := &Endpoint{
 		config:       config,
@@ -474,7 +478,7 @@ func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Me
 						Value:     metric.Value,
 					}
 					registeredcompactmetrics = append(registeredcompactmetrics, zcm)
-					e.cache.Set(metricCacheKey, metricIDNameAndHash, getCacheItemTTL(e.config.MinTTL, e.config.MaxTTL))
+					e.cache.Set(metricCacheKey, metricIDNameAndHash, getCacheItemTTLCompat(e.config.MinTTL, e.config.MaxTTL))
 				} else {
 					failedMetrics = append(failedMetrics, misses[i])
 				}
