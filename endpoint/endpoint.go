@@ -56,6 +56,10 @@ const (
 	// Overridden by Config.BundleConfig.BundleDelayThreshold.
 	DefaultBundleDelayThreshold = 1 * time.Second
 
+	DefaultMinTTL = 6 * time.Minute
+
+	DefaultMaxTTL = 54 * time.Minute
+
 	// APIKeyHeader is the gRPC header field containing a Zenoss API key.
 	APIKeyHeader = "zenoss-api-key"
 )
@@ -114,9 +118,11 @@ type Config struct {
 	TestRegClient data_registry.DataRegistryServiceClient
 
 	// Min TTL for local cache
+	// Default: 6 min
 	MinTTL int `yaml:"minTTL"`
 
 	// Max TTL for local cache
+	// Default: 54 min
 	MaxTTL int `yaml:"maxTTL"`
 
 	// CacheSizeLimit for local cache
@@ -264,12 +270,10 @@ func New(config Config) (*Endpoint, error) {
 
 	var cache *ttlcache.Cache[string, MetricIDNameAndHash]
 	if config.MinTTL <= 0 {
-		minTTl := time.Duration(0.1 * float64(config.ModelTTL))
-		config.MinTTL = int(minTTl.Seconds())
+		config.MinTTL = int(DefaultMinTTL.Seconds())
 	}
 	if config.MaxTTL <= 0 {
-		maxTTL := time.Duration(0.9 * float64(config.ModelTTL))
-		config.MaxTTL = int(maxTTL.Seconds())
+		config.MaxTTL = int(DefaultMaxTTL.Seconds())
 	}
 	cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
 
