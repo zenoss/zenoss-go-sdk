@@ -18,6 +18,7 @@ BUILD_IMG				:= zenoss/zenkit-build:$(ZENKIT_BUILD_VERSION)
 DOCKER_PARAMS			:=	--rm \
 							--volume $(ROOTDIR):/workspace/:rw \
 							--env CGO_ENABLED=1 \
+							--env LOCAL_USER_ID=$(shell id -u) \
 							--workdir /workspace/
 DOCKER_CMD				:= docker run -t $(DOCKER_PARAMS) $(BUILD_IMG)
 
