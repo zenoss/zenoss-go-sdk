@@ -7,7 +7,6 @@ package writer
 
 import (
 	"context"
-	"sync"
 
 	"github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
@@ -17,11 +16,9 @@ import (
 type HealthWriter interface {
 	// Start should be run in goroutine.
 	// It listens for healthIn channel and sends data to configured destinations
-	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target)
+	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target, doneCh chan<- any)
 	// Shutdown method gently terminates the writer
 	Shutdown()
-
-	Addwg()
 }
 
 // New creates a new HealthWriter instance.
@@ -31,7 +28,6 @@ func New(dests []Destination) HealthWriter {
 	return &writer{
 		destinations: dests,
 		stopSig:      stopSig,
-		wg:           &sync.WaitGroup{},
 	}
 }
 
@@ -40,11 +36,12 @@ type writer struct {
 	// we can also create and add some data transformers if
 	// health data should be changed somehow before send
 	stopSig chan struct{}
-	wg      *sync.WaitGroup
 }
 
-func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target) {
-	defer w.wg.Done()
+func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target, doneCh chan<- any) {
+	defer func() {
+		close(doneCh)
+	}()
 
 	for {
 		select {
@@ -75,10 +72,5 @@ func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targ
 }
 
 func (w *writer) Shutdown() {
-	defer w.wg.Wait()
 	close(w.stopSig)
-}
-
-func (w *writer) Addwg() {
-	w.wg.Add(1)
 }

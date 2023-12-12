@@ -39,6 +39,7 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 	measurementsCh := make(chan *TargetMeasurement)
 	healthCh := make(chan *target.Health)
 	targetCh := make(chan *target.Target)
+	doneCh := make(chan any)
 
 	c := NewCollector(cfg.CollectionCycle, measurementsCh)
 	SetCollectorSingleton(c)
@@ -50,13 +51,13 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 	go m.Start(ctx, measurementsCh, healthCh, targetCh)
 
-	writer.Addwg()
-	go writer.Start(ctx, healthCh, targetCh)
+	go writer.Start(ctx, healthCh, targetCh, doneCh)
 
 	return func() {
 		StopCollectorSingleton()
 		m.Shutdown()
 		writer.Shutdown()
+		<-doneCh
 	}
 }
 

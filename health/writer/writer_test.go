@@ -66,13 +66,13 @@ var _ = Describe("Writer", func() {
 	Context("Start", func() {
 		BeforeEach(func() {
 			healthWriter = writer.New(dests)
-			healthWriter.Addwg()
 		})
 
 		It("should start and die with shutdown", func() {
 			hCh := make(chan *target.Health)
 			tCh := make(chan *target.Target)
-			go healthWriter.Start(ctx, hCh, tCh)
+			doneCh := make(chan any)
+			go healthWriter.Start(ctx, hCh, tCh, doneCh)
 			healthWriter.Shutdown()
 		})
 
@@ -88,11 +88,12 @@ var _ = Describe("Writer", func() {
 			var wg sync.WaitGroup
 			hCh := make(chan *target.Health)
 			tCh := make(chan *target.Target)
+			doneCh := make(chan any)
 
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				healthWriter.Start(ctx, hCh, tCh)
+				healthWriter.Start(ctx, hCh, tCh, doneCh)
 			}()
 			tCh <- hTarget
 			hCh <- h
