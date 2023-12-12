@@ -56,6 +56,14 @@ const (
 	// Overridden by Config.BundleConfig.BundleDelayThreshold.
 	DefaultBundleDelayThreshold = 1 * time.Second
 
+	// DefaultMinTTL is the default minimum TTL for local cache.
+	// Overridden by Config.MinTTL.
+	DefaultMinTTL = 6 * time.Hour
+
+	// DefaultMaxTTL is the default maximum TTL for local cache.
+	// Overridden by Config.MaxTTL.
+	DefaultMaxTTL = 12 * time.Hour
+
 	// APIKeyHeader is the gRPC header field containing a Zenoss API key.
 	APIKeyHeader = "zenoss-api-key"
 )
@@ -114,9 +122,13 @@ type Config struct {
 	TestRegClient data_registry.DataRegistryServiceClient
 
 	// Min TTL for local cache
+	//
+	// Default: 6 hour
 	MinTTL int `yaml:"minTTL"`
 
 	// Max TTL for local cache
+	//
+	// Default: 12 hour
 	MaxTTL int `yaml:"maxTTL"`
 
 	// CacheSizeLimit for local cache
@@ -179,21 +191,19 @@ type MetricIDNameAndHash struct {
 }
 
 // initCache initialises the ttl cache used to store metric ids
-func initCache(cacheSizeLimit int, minTTL int, maxTTL int) *ttlcache.Cache[string, MetricIDNameAndHash] {
-	cache := ttlcache.New[string, MetricIDNameAndHash](
+func initCache(cacheSizeLimit, minTTL, maxTTL int) *ttlcache.Cache[string, MetricIDNameAndHash] {
+	return ttlcache.New[string, MetricIDNameAndHash](
 		ttlcache.WithTTL[string, MetricIDNameAndHash](getCacheItemTTL(minTTL, maxTTL)),
 		ttlcache.WithCapacity[string, MetricIDNameAndHash](uint64(cacheSizeLimit)),
 		ttlcache.WithDisableTouchOnHit[string, MetricIDNameAndHash](),
 	)
-	return cache
 }
 
-// getCacheItemTTL gets a ttl selected at randon within max and min ttl limits
+// getCacheItemTTL gets a ttl selected at random within max and min ttl limits
 func getCacheItemTTL(minTTL int, maxTTL int) time.Duration {
 	return time.Duration(getRandInRange(minTTL, maxTTL)) * time.Second
 }
 
-// getRandInRange gets a random number in range
 func getRandInRange(min, max int) int {
 	return rand.Intn(max-min) + min
 }
@@ -263,10 +273,13 @@ func New(config Config) (*Endpoint, error) {
 	}
 
 	var cache *ttlcache.Cache[string, MetricIDNameAndHash]
-	if config.MinTTL != 0 && config.MaxTTL != 0 {
-		// config.CacheSizeLimit == 0 means no limit
-		cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
+	if config.MinTTL <= 0 {
+		config.MinTTL = int(DefaultMinTTL.Seconds())
 	}
+	if config.MaxTTL <= 0 {
+		config.MaxTTL = int(DefaultMaxTTL.Seconds())
+	}
+	cache = initCache(config.CacheSizeLimit, config.MinTTL, config.MaxTTL)
 
 	e := &Endpoint{
 		config:       config,
