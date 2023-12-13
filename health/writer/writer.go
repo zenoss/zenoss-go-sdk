@@ -7,7 +7,6 @@ package writer
 
 import (
 	"context"
-	"sync"
 
 	"github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
@@ -29,7 +28,6 @@ func New(dests []Destination) HealthWriter {
 	return &writer{
 		destinations: dests,
 		stopSig:      stopSig,
-		wg:           &sync.WaitGroup{},
 	}
 }
 
@@ -38,13 +36,9 @@ type writer struct {
 	// we can also create and add some data transformers if
 	// health data should be changed somehow before send
 	stopSig chan struct{}
-	wg      *sync.WaitGroup
 }
 
 func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target) {
-	w.wg.Add(1)
-	defer w.wg.Done()
-
 	for {
 		select {
 		case healthData, more := <-healthIn:
@@ -75,5 +69,4 @@ func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targ
 
 func (w *writer) Shutdown() {
 	close(w.stopSig)
-	w.wg.Wait()
 }

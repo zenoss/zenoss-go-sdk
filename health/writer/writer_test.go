@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,14 +84,21 @@ var _ = Describe("Writer", func() {
 			)
 			h := target.NewHealth(targetID, utils.DefaultTargetType)
 
+			var wg sync.WaitGroup
 			hCh := make(chan *target.Health)
 			tCh := make(chan *target.Target)
-			go healthWriter.Start(ctx, hCh, tCh)
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				healthWriter.Start(ctx, hCh, tCh)
+			}()
 			tCh <- hTarget
 			hCh <- h
 			time.Sleep(1 * time.Second)
 			close(hCh)
 			close(tCh)
+			wg.Wait()
 			out := buf.String()
 
 			Ω(out).Should(ContainSubstring(fmt.Sprintf("TargetID: %s, Status=Healthy", targetID)))

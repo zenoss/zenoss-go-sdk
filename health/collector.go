@@ -54,7 +54,9 @@ func StopCollectorSingleton() {
 	collectorLock.Lock()
 	defer collectorLock.Unlock()
 	if collector != nil {
-		close(collector.done)
+		collector.doneOnce.Do(func() {
+			close(collector.done)
+		})
 	}
 }
 
@@ -79,6 +81,7 @@ type healthCollector struct {
 	cycleDuration time.Duration
 	metricsIn     chan<- *TargetMeasurement
 	done          chan struct{}
+	doneOnce      sync.Once
 }
 
 func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error) {

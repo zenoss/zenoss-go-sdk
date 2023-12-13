@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
@@ -42,19 +43,41 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 	c := NewCollector(cfg.CollectionCycle, measurementsCh)
 	SetCollectorSingleton(c)
 
+	ctx, cancel := context.WithCancel(ctx)
+	var doneWg sync.WaitGroup
+
+	doneWg.Add(1)
 	go func() {
+		defer doneWg.Done()
+		defer cancel()
 		<-ctx.Done()
+
 		StopCollectorSingleton()
 	}()
 
-	go m.Start(ctx, measurementsCh, healthCh, targetCh)
+	doneWg.Add(1)
+	go func() {
+		defer doneWg.Done()
+		defer cancel()
 
-	go writer.Start(ctx, healthCh, targetCh)
+		m.Start(ctx, measurementsCh, healthCh, targetCh)
+	}()
+
+	doneWg.Add(1)
+	go func() {
+		defer doneWg.Done()
+		defer cancel()
+
+		writer.Start(ctx, healthCh, targetCh)
+	}()
 
 	return func() {
+		cancel()
+
 		StopCollectorSingleton()
 		m.Shutdown()
 		writer.Shutdown()
+		doneWg.Wait()
 	}
 }
 
@@ -104,7 +127,7 @@ type healthManager struct {
 	wg *sync.WaitGroup
 
 	mu      sync.Mutex
-	started bool
+	started atomic.Bool
 }
 
 func (hm *healthManager) Start(
@@ -131,10 +154,10 @@ func (hm *healthManager) Start(
 		hm.healthForwarder(ctx, healthIn)
 	}()
 
-	hm.started = true
+	hm.started.Store(true)
 	go func() {
 		hm.wg.Wait()
-		hm.started = false
+		hm.started.Store(false)
 		hm.stopWait <- struct{}{}
 	}()
 
@@ -150,7 +173,7 @@ func (hm *healthManager) Shutdown() {
 }
 
 func (hm *healthManager) IsStarted() bool {
-	return hm.started
+	return hm.started.Load()
 }
 
 func (hm *healthManager) AddTargets(targets []*target.Target) {
@@ -159,7 +182,7 @@ func (hm *healthManager) AddTargets(targets []*target.Target) {
 
 	for _, newTarget := range targets {
 		hm.registry.setRawHealthForTarget(newRawHealth(newTarget))
-		if hm.started {
+		if hm.IsStarted() {
 			hm.targetIn <- newTarget
 		}
 	}

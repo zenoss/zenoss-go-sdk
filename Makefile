@@ -54,7 +54,6 @@ test: COVERAGE_PROFILE := coverprofile.out
 test: COVERAGE_HTML    := $(COVERAGE_DIR)/index.html
 test: COVERAGE_XML     := $(COVERAGE_DIR)/coverage.xml
 test: fmt lint
-	@echo "Please ENABLE RACE DETECTOR"
 	@mkdir -p $(COVERAGE_DIR)
 	@$(GINKGO) \
 		run \
@@ -62,11 +61,11 @@ test: fmt lint
 		--tags integration \
 		--cover \
 		--coverprofile $(COVERAGE_PROFILE) \
-		--covermode=count \
+		--covermode=atomic \
+		--race \
 		--junit-report=junit.xml
 	$Q $(GO) tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
 	$Q $(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
-	@echo "Please ENABLE RACE DETECTOR"
 
 .PHONY: test-containerized
 test-containerized:

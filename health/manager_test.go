@@ -307,6 +307,7 @@ var _ = Describe("Health Manager", func() {
 					CounterChange: counterValue,
 				}
 				mesuresCh <- counterMeasure
+				time.Sleep(200 * time.Microsecond)
 
 				go func() {
 					testTarget := <-targetCh
