@@ -16,7 +16,7 @@ import (
 type HealthWriter interface {
 	// Start should be run in goroutine.
 	// It listens for healthIn channel and sends data to configured destinations
-	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target, doneCh chan<- any)
+	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target)
 	// Shutdown method gently terminates the writer
 	Shutdown()
 }
@@ -38,11 +38,7 @@ type writer struct {
 	stopSig chan struct{}
 }
 
-func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target, doneCh chan<- any) {
-	defer func() {
-		close(doneCh)
-	}()
-
+func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target) {
 	for {
 		select {
 		case healthData, more := <-healthIn:

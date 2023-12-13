@@ -39,25 +39,45 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 	measurementsCh := make(chan *TargetMeasurement)
 	healthCh := make(chan *target.Health)
 	targetCh := make(chan *target.Target)
-	doneCh := make(chan any)
 
 	c := NewCollector(cfg.CollectionCycle, measurementsCh)
 	SetCollectorSingleton(c)
 
+	ctx, cancel := context.WithCancel(ctx)
+	var doneWg sync.WaitGroup
+
+	doneWg.Add(1)
 	go func() {
+		defer doneWg.Done()
+		defer cancel()
 		<-ctx.Done()
+
 		StopCollectorSingleton()
 	}()
 
-	go m.Start(ctx, measurementsCh, healthCh, targetCh)
+	doneWg.Add(1)
+	go func() {
+		defer doneWg.Done()
+		defer cancel()
 
-	go writer.Start(ctx, healthCh, targetCh, doneCh)
+		m.Start(ctx, measurementsCh, healthCh, targetCh)
+	}()
+
+	doneWg.Add(1)
+	go func() {
+		defer doneWg.Done()
+		defer cancel()
+
+		writer.Start(ctx, healthCh, targetCh)
+	}()
 
 	return func() {
+		cancel()
+
 		StopCollectorSingleton()
 		m.Shutdown()
 		writer.Shutdown()
-		<-doneCh
+		doneWg.Wait()
 	}
 }
 
