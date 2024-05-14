@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mitchellh/hashstructure"
+	"github.com/mitchellh/hashstructure/v2"
 
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 )
@@ -71,12 +71,12 @@ func (t *Tracker) IsAlive(key uint64, value uint64) bool {
 // IsModelAlive returns true if model hasn't expired from the cache.
 // Otherwise it adds model to the cache and returns false.
 func (t *Tracker) IsModelAlive(model *data_receiver.Model) bool {
-	key, err := hashstructure.Hash(model.Dimensions, nil)
+	key, err := hashstructure.Hash(model.Dimensions, hashstructure.FormatV2, nil)
 	if err != nil {
 		return false
 	}
 
-	value, err := hashstructure.Hash(model.MetadataFields, nil)
+	value, err := hashstructure.Hash(model.MetadataFields, hashstructure.FormatV2, nil)
 	if err != nil {
 		return false
 	}

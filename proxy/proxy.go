@@ -48,6 +48,8 @@ type Config struct {
 
 // Proxy is a proxy for Zenoss' DataReceiverService API.
 type Proxy struct {
+	data_receiver.UnimplementedDataReceiverServiceServer
+
 	config         Config
 	allowedAPIKeys map[string]any
 	output         data_receiver.DataReceiverServiceClient

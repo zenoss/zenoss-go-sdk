@@ -13,7 +13,7 @@ GINKGO					:= $(shell command -v ginkgo 2> /dev/null)
 GOCOV					:= $(shell command -v gocov 2> /dev/null)
 GOCOVXML				:= $(shell command -v gocov-xml 2> /dev/null)
 COVERAGE_DIR			:= $(CURDIR)/coverage
-ZENKIT_BUILD_VERSION	:= 1.17.0
+ZENKIT_BUILD_VERSION	:= 1.18.0
 BUILD_IMG				:= zenoss/zenkit-build:$(ZENKIT_BUILD_VERSION)
 DOCKER_PARAMS			:=	--rm \
 							--volume $(ROOTDIR):/workspace/:rw \
