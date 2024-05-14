@@ -15,12 +15,13 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 
-	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
+	grpcretry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 
 	"google.golang.org/api/support/bundler"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -28,7 +29,7 @@ import (
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
 	"github.com/jellydator/ttlcache/v3"
-	"github.com/spaolacci/murmur3"
+	"github.com/twmb/murmur3"
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
 	"github.com/zenoss/zenoss-go-sdk/log"
 	zstats "github.com/zenoss/zenoss-go-sdk/stats"
@@ -242,24 +243,28 @@ func New(config Config) (*Endpoint, error) {
 		dialOptions := make([]grpc.DialOption, 4)
 
 		if config.DisableTLS {
-			dialOptions[0] = grpc.WithInsecure()
+			dialOptions[0] = grpc.WithTransportCredentials(
+				insecure.NewCredentials(),
+			)
 		} else {
 			dialOptions[0] = grpc.WithTransportCredentials(
 				credentials.NewTLS(
 					&tls.Config{
 						InsecureSkipVerify: config.InsecureTLS,
-					}))
+					},
+				),
+			)
 		}
 
 		// Enable gRPC retry middleware.
-		retryOptions := []grpc_retry.CallOption{
-			grpc_retry.WithMax(5),
-			grpc_retry.WithPerRetryTimeout(config.Timeout / 3),
-			grpc_retry.WithBackoff(grpc_retry.BackoffLinear(200 * time.Millisecond)),
+		retryOptions := []grpcretry.CallOption{
+			grpcretry.WithMax(5),
+			grpcretry.WithPerRetryTimeout(config.Timeout / 3),
+			grpcretry.WithBackoff(grpcretry.BackoffLinear(200 * time.Millisecond)),
 		}
 
-		dialOptions[1] = grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(retryOptions...))
-		dialOptions[2] = grpc.WithStreamInterceptor(grpc_retry.StreamClientInterceptor(retryOptions...))
+		dialOptions[1] = grpc.WithUnaryInterceptor(grpcretry.UnaryClientInterceptor(retryOptions...))
+		dialOptions[2] = grpc.WithStreamInterceptor(grpcretry.StreamClientInterceptor(retryOptions...))
 
 		// Enable OpenCensus gRPC client stats.
 		dialOptions[3] = grpc.WithStatsHandler(&ocgrpc.ClientHandler{})
