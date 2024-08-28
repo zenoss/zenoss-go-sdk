@@ -272,9 +272,7 @@ func New(config Config) (*Endpoint, error) {
 		// Dial doesn't block by default. So no error can actually occur.
 		conn, _ := grpc.Dial(config.Address, dialOptions...)
 		client = data_receiver.NewDataReceiverServiceClient(conn)
-		regDialOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
-		regconn, _ := grpc.Dial(config.Address, regDialOption)
-		regclient = data_registry.NewDataRegistryServiceClient(regconn)
+		regclient = data_registry.NewDataRegistryServiceClient(conn)
 	}
 
 	var cache *ttlcache.Cache[string, MetricIDNameAndHash]
