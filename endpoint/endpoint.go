@@ -429,7 +429,7 @@ func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_recei
 	)
 	for _, metric := range allmetrics {
 		currentMetricCacheKey := e.GetMetricCacheKey(metric)
-		
+
 		cacheentry := e.cache.Get(currentMetricCacheKey)
 		if cacheentry != nil {
 			// cache hit, return metric with its id and name if metadata not changed
