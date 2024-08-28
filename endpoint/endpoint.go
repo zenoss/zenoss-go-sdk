@@ -429,7 +429,6 @@ func (e *Endpoint) checkCache(allmetrics []*data_receiver.Metric) ([]*data_recei
 	)
 	for _, metric := range allmetrics {
 		currentMetricCacheKey := e.GetMetricCacheKey(metric)
-		log.Log(e, log.LevelDebug, log.Fields{"currentMetricCacheKey": currentMetricCacheKey}, "Generated key for metric cache")
 
 		cacheentry := e.cache.Get(currentMetricCacheKey)
 		if cacheentry != nil {
