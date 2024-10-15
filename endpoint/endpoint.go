@@ -500,7 +500,7 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, 0, len(metrics))
 	registerMetricsresponse, err := e.CreateOrUpdateMetrics(ctx, metrics)
 	if err != nil {
-		log.Log(e, log.LevelError, log.Fields{}, "Unable to register metrics")
+		log.Log(e, log.LevelError, log.Fields{"error": err}, "Unable to register metrics")
 		return successes, metricIDsNamesAndHashes
 	}
 
@@ -528,7 +528,7 @@ func (e *Endpoint) CreateOrUpdateMetrics(ctx context.Context, metrics []*data_re
 	if e.config.APIKey != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, APIKeyHeader, e.config.APIKey)
 	}
-	stream, err := e.regclient.CreateOrUpdateMetrics(ctx)
+	stream, err := e.regclient.CreateOrUpdateMetrics(ctx, grpcretry.Disable())
 	if err != nil {
 		return nil, err
 	}
