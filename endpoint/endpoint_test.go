@@ -126,7 +126,7 @@ var _ = Describe("Endpoint", func() {
 					Responses: responses,
 				}, nil)
 
-				regout.On("CreateOrUpdateMetrics", mock.Anything).
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
 					Return(regCreateOrUpdateStreamingClientMock, nil)
 				inputMetrics := []*data_receiver.Metric{
 					{
