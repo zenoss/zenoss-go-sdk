@@ -77,6 +77,7 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 		StopCollectorSingleton()
 		m.Shutdown()
+		close(measurementsCh)
 		writer.Shutdown()
 		doneWg.Wait()
 	}
@@ -93,6 +94,8 @@ type Manager interface {
 		ctx context.Context, measureOut <-chan *TargetMeasurement,
 		healthIn chan<- *target.Health, targetIn chan<- *target.Target,
 	)
+	// UpdateConfig applies the new configuration for manager and collector
+	UpdateConfig(config *Config) error
 	// Shutdown method closes manager's channels and terminates goroutines
 	Shutdown()
 	// IsStarted return the status of the manager
@@ -119,6 +122,7 @@ func NewManager(_ context.Context, config *Config) Manager {
 type healthManager struct {
 	registry healthRegistry
 	config   *Config
+	configIn chan<- *Config
 	healthIn chan<- *target.Health
 	targetIn chan<- *target.Target
 
@@ -129,15 +133,19 @@ type healthManager struct {
 	// used to wait for manager processes to stop so we can mark started as false in a right time
 	wg *sync.WaitGroup
 
-	mu      sync.Mutex
-	started atomic.Bool
+	mu       sync.Mutex
+	configMu sync.RWMutex
+	started  atomic.Bool
 }
 
 func (hm *healthManager) Start(
 	ctx context.Context, measureOut <-chan *TargetMeasurement,
 	healthIn chan<- *target.Health, targetIn chan<- *target.Target,
 ) {
+	configCh := make(chan *Config)
+
 	hm.mu.Lock()
+	hm.configIn = configCh
 	hm.targetIn = targetIn
 	hm.healthIn = healthIn
 	hm.stopSig = make(chan struct{})
@@ -152,7 +160,7 @@ func (hm *healthManager) Start(
 	hm.wg.Add(1)
 	go func() {
 		defer hm.wg.Done()
-		hm.healthForwarder(ctx, healthIn)
+		hm.healthForwarder(ctx, configCh, healthIn)
 	}()
 
 	hm.started.Store(true)
@@ -166,12 +174,56 @@ func (hm *healthManager) Start(
 	hm.sendTargetsInfo() // if some targets were added before start we need to register them
 }
 
+func (hm *healthManager) UpdateConfig(newConfig *Config) error {
+	if newConfig == nil {
+		return fmt.Errorf("config should not be nil")
+	}
+	if newConfig.CollectionCycle <= 0 {
+		return fmt.Errorf("collection cycle must be positive")
+	}
+	logging.SetLogLevel(newConfig.LogLevel)
+
+	var cycleDurUpdated bool
+	hm.configMu.Lock()
+	cycleDurUpdated = hm.config.CollectionCycle != newConfig.CollectionCycle
+	hm.config = newConfig
+	hm.configMu.Unlock()
+
+	if cycleDurUpdated {
+		coll, err := GetCollectorSingleton()
+		if err != nil {
+			return err
+		}
+		err = coll.UpdateCycleDuration(newConfig.CollectionCycle)
+		if err != nil {
+			return err
+		}
+		go func() {
+			hm.configIn <- newConfig
+		}()
+	}
+	return nil
+}
+
+func (hm *healthManager) collectionCycle() time.Duration {
+	hm.configMu.RLock()
+	defer hm.configMu.RUnlock()
+	return hm.config.CollectionCycle
+}
+
+func (hm *healthManager) registrationOnCollect() bool {
+	hm.configMu.RLock()
+	defer hm.configMu.RUnlock()
+	return hm.config.RegistrationOnCollect
+}
+
 func (hm *healthManager) Shutdown() {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 	close(hm.stopSig)
 	<-hm.stopWait
 	close(hm.targetIn)
+	close(hm.configIn)
 }
 
 func (hm *healthManager) Done() <-chan struct{} {
@@ -240,7 +292,7 @@ func (hm *healthManager) updateTargetHealthData(measure *TargetMeasurement) erro
 
 	targetHealth, ok := hm.registry.getRawHealthForTarget(measure.TargetID)
 	if !ok {
-		if !hm.config.RegistrationOnCollect {
+		if !hm.registrationOnCollect() {
 			return utils.ErrTargetNotRegistered
 		}
 		targetHealth, err = hm.buildTargetFromMeasure(measure)
@@ -278,7 +330,7 @@ func (hm *healthManager) updateTargetHealthData(measure *TargetMeasurement) erro
 
 func (hm *healthManager) updateTargetsMetric(tHealth *rawHealth, measure *TargetMeasurement) error {
 	if !sdk_utils.ListContainsString(tHealth.target.MetricIDs, measure.MeasureID) {
-		if !hm.config.RegistrationOnCollect {
+		if !hm.registrationOnCollect() {
 			return utils.ErrMetricNotRegistered
 		}
 		if !tHealth.target.IsMeasureIDUnique(measure.MeasureID) {
@@ -300,7 +352,7 @@ func (hm *healthManager) updateTargetsCounter(tHealth *rawHealth, measure *Targe
 		tHealth.totalCounters[measure.MeasureID] += measure.CounterChange
 	} else {
 		if !sdk_utils.ListContainsString(tHealth.target.CounterIDs, measure.MeasureID) {
-			if !hm.config.RegistrationOnCollect {
+			if !hm.registrationOnCollect() {
 				return utils.ErrCounterNotRegistered
 			}
 			if !tHealth.target.IsMeasureIDUnique(measure.MeasureID) {
@@ -337,15 +389,20 @@ func (*healthManager) buildTargetFromMeasure(measure *TargetMeasurement) (*rawHe
 }
 
 // Calculates raw health data from the registry and forwards all health data to the writer once per cycle
-func (hm *healthManager) healthForwarder(ctx context.Context, healthIn chan<- *target.Health) {
+func (hm *healthManager) healthForwarder(ctx context.Context, configUpd <-chan *Config, healthIn chan<- *target.Health) {
 	log := logging.GetLogger()
-	log.Info().Msgf("Start to send health data to a writer with cycle %v", hm.config.CollectionCycle)
+	log.Info().Msgf("Start to send health data to a writer with cycle %v", hm.collectionCycle())
 	defer func() { log.Info().Msg("Finish to send health data to a writer") }()
-	ticker := time.NewTicker(hm.config.CollectionCycle)
+	ticker := time.NewTicker(hm.collectionCycle())
 	for {
 		select {
 		case <-ticker.C:
 			hm.writeHealthResult(healthIn)
+		case cfg, updated := <-configUpd:
+			if updated {
+				ticker.Reset(cfg.CollectionCycle)
+				logging.GetLogger().Info().Msgf("Updated collection interval to %v", cfg.CollectionCycle)
+			}
 		case <-hm.stopSig:
 			hm.writeHealthResult(healthIn)
 			close(healthIn)
