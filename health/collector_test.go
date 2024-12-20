@@ -42,6 +42,10 @@ var _ = Describe("Collector", func() {
 				Ω(hbMeasure).ShouldNot(BeNil())
 				Ω(hbMeasure.MeasureType).Should(Equal(health.Heartbeat))
 
+				// should restart active heartbeat goroutine for existing target
+				hbCancel, err = collector.HeartBeat(testTargetID)
+				Ω(err).Should(BeNil())
+
 				hbCancel()
 			})
 		})

@@ -2,9 +2,11 @@ package health
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
+	logging "github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
@@ -19,6 +21,8 @@ type Collector interface {
 	// HeartBeat runs a new goroutine that sends heartbeat data once per collection cycle.
 	// It returns the cancel that will stop the heartbeat goroutine.
 	HeartBeat(targetID string) (context.CancelFunc, error)
+	// UpdateCycleDuration updates heartbeat cycle duration with provided value for all active targets
+	UpdateCycleDuration(d time.Duration) error
 	// AddToCounter updates counter with provided value (can be negative).
 	// Used for both TotalCounters and Counters
 	AddToCounter(targetID, counterID string, value int32) error
@@ -79,9 +83,16 @@ func ResetCollectorSingleton() {
 
 type healthCollector struct {
 	cycleDuration time.Duration
+	heartbeats    sync.Map
+	mu            sync.RWMutex
 	metricsIn     chan<- *TargetMeasurement
 	done          chan struct{}
 	doneOnce      sync.Once
+}
+
+type heartbeatTracker struct {
+	cancel context.CancelFunc
+	ticker *time.Ticker
 }
 
 func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error) {
@@ -91,10 +102,28 @@ func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error
 	default:
 	}
 
+	if hb, exists := hc.heartbeats.Load(targetID); exists {
+		heartbeat := hb.(*heartbeatTracker)
+		heartbeat.ticker.Stop()
+		heartbeat.cancel()
+		hc.heartbeats.Delete(targetID)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
+		hc.mu.RLock()
 		ticker := time.NewTicker(hc.cycleDuration)
+		hc.mu.RUnlock()
+		hc.heartbeats.Store(targetID, &heartbeatTracker{
+			cancel: cancel,
+			ticker: ticker,
+		})
+		defer func() {
+			ticker.Stop()
+			hc.heartbeats.Delete(targetID)
+		}()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -117,6 +146,30 @@ func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error
 	}()
 
 	return cancel, nil
+}
+
+func (hc *healthCollector) UpdateCycleDuration(newDuration time.Duration) error {
+	if newDuration <= 0 {
+		return fmt.Errorf("cycle duration must be positive")
+	}
+
+	hc.mu.Lock()
+	hc.cycleDuration = newDuration
+	hc.mu.Unlock()
+
+	targets := 0
+	hc.heartbeats.Range(func(_, hb any) bool {
+		heartbeat := hb.(*heartbeatTracker)
+		heartbeat.ticker.Reset(newDuration)
+		targets++
+		return true
+	})
+	if targets > 0 {
+		logging.GetLogger().Info().Msgf("Updated heartbeat interval to %v for %d targets",
+			newDuration, targets,
+		)
+	}
+	return nil
 }
 
 func (hc *healthCollector) AddToCounter(targetID, counterID string, value int32) error {

@@ -14,6 +14,7 @@ import (
 
 const (
 	mercedesTarget = "mercedes.citaro"
+	bogdanTarget   = "bogdan.A091"
 
 	speedMetricID       = "speed"
 	stationsCounterID   = "stations"
@@ -57,13 +58,13 @@ func main() {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go bus(wg)
+	go bus(manager, wg)
 	wg.Wait()
 
 	frameworkStop()
 }
 
-func bus(wg *sync.WaitGroup) {
+func bus(manager health.Manager, wg *sync.WaitGroup) {
 	log := log.GetLogger()
 	defer wg.Done()
 
@@ -122,6 +123,26 @@ func bus(wg *sync.WaitGroup) {
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 5.0)
 	collector.AddMetricValue(mercedesTarget, speedMetricID, 25.0)
 
+	time.Sleep(sleeps / 2)
+
+	log.Info().Msg("An unregistered vehicle appears at a crossroads")
+	collector.AddMetricValue(bogdanTarget, speedMetricID, 2)
+	time.Sleep(sleeps / 2)
+
+	log.Info().Msg("Updating the config to monitor it")
+	cfg := health.NewConfig()
+	cfg.RegistrationOnCollect = true
+	cfg.CollectionCycle = 4 * time.Second
+	manager.UpdateConfig(cfg)
+	sleeps = 4 * time.Second
+	time.Sleep(sleeps / 2)
+
+	collector.AddMetricValue(bogdanTarget, speedMetricID, 4.0)
+	collector.AddMetricValue(mercedesTarget, speedMetricID, 5.0)
 	time.Sleep(sleeps)
-	log.Info().Msg("Bus is keep moving but we don't need to monitor it anymore")
+
+	collector.AddMetricValue(bogdanTarget, speedMetricID, 7.0)
+	collector.AddMetricValue(mercedesTarget, speedMetricID, 11.0)
+	time.Sleep(sleeps)
+	log.Info().Msg("Buses keep moving but we don't need to monitor them anymore")
 }

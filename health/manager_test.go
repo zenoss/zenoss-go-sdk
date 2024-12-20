@@ -537,4 +537,117 @@ var _ = Describe("Health Manager", func() {
 			Ω(actualHealth.Metrics[newMeasureID]).Should(Equal(metricValue))
 		})
 	})
+
+	Context("dynamic config update", func() {
+		var (
+			unknownTargetID = "unknown.target"
+			unknownMetric   = "unknown.metric"
+
+			hbCancel context.CancelFunc
+			err      error
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			config := health.NewConfig()
+			config.CollectionCycle = 200 * time.Millisecond
+			config.RegistrationOnCollect = false
+			config.LogLevel = "fatal"
+			manager = health.NewManager(ctx, config)
+
+			mesuresCh = make(chan *health.TargetMeasurement)
+			healthCh = make(chan *target.Health)
+			targetCh = make(chan *target.Target)
+			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+
+			collector := health.NewCollector(config.CollectionCycle, mesuresCh)
+			health.SetCollectorSingleton(collector)
+
+			hbCancel, err = collector.HeartBeat(unknownTargetID)
+			Ω(err).ShouldNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			health.StopCollectorSingleton()
+			manager.Shutdown()
+			close(mesuresCh)
+		})
+
+		It("should fail to update with nil config", func() {
+			err := manager.UpdateConfig(nil)
+			Ω(err).ShouldNot(BeNil())
+			Ω(err.Error()).Should(ContainSubstring("config should not be nil"))
+		})
+
+		It("should fail to update with 0 cycle duration", func() {
+			newCfg := health.NewConfig()
+			newCfg.CollectionCycle = 0
+
+			err := manager.UpdateConfig(newCfg)
+			Ω(err).ShouldNot(BeNil())
+			Ω(err.Error()).Should(ContainSubstring("collection cycle must be positive"))
+		})
+
+		It("should fail to update with dead collector", func() {
+			hbCancel()
+			health.ResetCollectorSingleton()
+
+			newCfg := health.NewConfig()
+			newCfg.CollectionCycle = 300 * time.Millisecond
+
+			err := manager.UpdateConfig(newCfg)
+			Ω(err).ShouldNot(BeNil())
+			Ω(err.Error()).Should(ContainSubstring("collector is not running"))
+		})
+
+		It("should not send health data for unregistered target first", func() {
+			metricValue := float64(2)
+			counterMeasure := &health.TargetMeasurement{
+				TargetID:    unknownTargetID,
+				MeasureType: health.Metric,
+				MeasureID:   unknownMetric,
+				MetricValue: metricValue,
+			}
+			mesuresCh <- counterMeasure
+
+			Consistently(func() bool {
+				select {
+				case <-healthCh:
+					return true
+				default:
+					return false // no health message received
+				}
+			}).Should(BeFalse())
+		})
+
+		It("should add the target dynamically by metric after config update", func() {
+			newCfg := health.NewConfig()
+			newCfg.CollectionCycle = 400 * time.Millisecond
+			newCfg.RegistrationOnCollect = true
+			newCfg.LogLevel = "info"
+			err := manager.UpdateConfig(newCfg)
+			Ω(err).ShouldNot(HaveOccurred())
+
+			metricValue := float64(6.4)
+			metricMeasure := &health.TargetMeasurement{
+				TargetID:    unknownTargetID,
+				MeasureType: health.Metric,
+				MeasureID:   unknownMetric,
+				MetricValue: metricValue,
+			}
+			mesuresCh <- metricMeasure
+
+			actualHealth := <-healthCh
+			defer func() {
+				go func() {
+					<-healthCh
+				}()
+			}()
+
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.TargetID).Should(Equal(unknownTargetID))
+			Ω(actualHealth.Metrics[unknownMetric]).Should(Equal(metricValue))
+		})
+	})
 })
