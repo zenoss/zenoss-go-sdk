@@ -77,7 +77,6 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 		StopCollectorSingleton()
 		m.Shutdown()
-		close(measurementsCh)
 		writer.Shutdown()
 		doneWg.Wait()
 	}
