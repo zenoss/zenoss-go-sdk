@@ -1,8 +1,20 @@
 # Health Monitoring Framework
 
-Main purpose of the package is to provide a framework that gives you an ability to collect and send health data and metrics for configured components.
+Main purpose of the package is to provide a framework that gives you an ability to collect and send health data and metrics for configured components and targets.
 
-Component can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the component can be simply in two states: healty or unhealthy and the health monitoring framework provides you an ability to mark your component as healthy or unhealthy in different cases. Additionaly we provide an ability to collect health related metrics. You can collect whatever you wants. For example you can collect error rate and if it is constatly hight it can also say something about component health. Abilities to collect heartbeat or error messages also in place.
+Component can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the component can be in three states: healthy, degraded or unhealthy and the health monitoring framework provides you an ability to mark your component appropriately in different cases. Additionally, we provide an ability to collect health related metrics. You can collect whatever you want. For example, you can collect error rate and if it is constantly high it can also say something about component health. Abilities to collect heartbeat or error messages also in place.
+
+Target component has the same capabilities as a regular component. The difference is that its health status is determined through the impact of other components rather than directly.
+Thus, components can be organized in a hierarchical structure to separate more general logical elements and their constituent parts.
+Relationships are set when each component is defined, by specifying the Target it will affect (or not specifying if it is the highest level component or lives on its own).
+If the referenced Target component is not explicitly defined, it will be created automatically. In that case, its basic properties will be general health status and heartbeat (if at least one component that impacts it has enabled heartbeat).
+
+Currently, the health status of the Target is calculated as follows:
+* Target is `Healthy` if all of its components have status `Healthy`.
+* Target is `Degrade` if one or less than half of the components have status `Degrade`.
+* Target is `Unhealthy` if at least one component has status `Unhealthy` or half or more of the components have status `Degrade`.
+* Target receives messages indicating specific non-healthy components and their statuses.
+* Target has a heartbeat if at least one of its components has a heartbeat.
 
 ## How to use
 
@@ -20,7 +32,7 @@ config.CollectionCycle = 60 * time.Second
 
 // define your components
 firstComponent, err := component.New(
-    firstComponentID, true,
+    componentID, componentType, targetComponenID, true,
     []string{someMetricID},
     []string{someCounterID},
     []string{someTotalCounterID},
@@ -103,8 +115,6 @@ Config keeps configuration for whole framework instance. Right now we have these
 * RegistrationOnCollect - whether to allow data collection for unregistered components. Manager will register such components automatically. Not recommended to use, it is better to explicitly define all components. Note: in this case you cannot specify counter as a total counter.
 * LogLevel - log level will be applied to zerolog logger during manager.Start call. Available values: trace, debug, info, warn, error, fatal, panic
 
-Note: right now we don't have an ability to update Configuration after you passed it as a parameter to manager constructor.
-
 ### Component
 
 Provided by health/component package. Component object keeps data about all its metrics and some additional per component configs.
@@ -112,6 +122,7 @@ Provided by health/component package. Component object keeps data about all its 
 Component data:
 * ID
 * Type - just a string. Should help to categorize your components and can be used to help define component priority in future. You can pass empty string, "default" value will be used then.
+* TargetID - ID of another (impacted) component
 * MetricIDs - list of float metric IDs (calculate avg value for each metric every cycle)
 * CounterIDs - list of counter IDs (resets to 0 every cycle)
 * TotalCounterIDs - list of total counter IDs (will not be reset every cycle)
@@ -163,9 +174,10 @@ Message struct lives in health/component package. It has these fields:
 
 ### Component Health
 
-Lives in health/targer package. It is a final look of component's health data. Right now it has such fields:
+Lives in health/component package. It is a final look of component's health data. Right now it has such fields:
 * ComponentID
 * ComponentType
+* TargetID
 * Healthy - health status of the component
 * Heartbeat - object with two values: Enabled, Beats. Enabled shows you whether you described that you want to collect heartbeat info. Beats will be true if we received heartbeat info during last cycle.
 * Counters - map of all (default and total) counters with their values

@@ -73,7 +73,7 @@ var _ = Describe("Destination", func() {
 			counterName := "testCounter"
 			cValue := int32(10)
 
-			health := component.NewHealth(componentID, "")
+			health := component.NewHealth(componentID, "", "")
 			health.Metrics = make(map[string]float64)
 			health.Metrics[metricName] = value
 			health.Counters = make(map[string]int32)
@@ -95,7 +95,7 @@ var _ = Describe("Destination", func() {
 		})
 
 		It("should not fail even if zc is not avilable", func() {
-			health := component.NewHealth(componentID, "")
+			health := component.NewHealth(componentID, "", "")
 			health.Metrics = make(map[string]float64)
 			health.Metrics[metricName] = value
 
@@ -113,7 +113,7 @@ var _ = Describe("Destination", func() {
 		It("should push Component info as a model", func() {
 			empty := []string{}
 			component, err := component.New(
-				componentID, utils.DefaultComponentType, false,
+				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
 				empty, empty, empty,
 			)
 			Ω(err).Should(BeNil())
@@ -135,7 +135,7 @@ var _ = Describe("Destination", func() {
 		It("should not fail even if zc is not avilable", func() {
 			empty := []string{}
 			component, err := component.New(
-				componentID, utils.DefaultComponentType, false,
+				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
 				empty, empty, empty,
 			)
 			Ω(err).Should(BeNil())

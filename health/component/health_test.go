@@ -11,7 +11,7 @@ var _ = Describe("Component's Health Constructor", func() {
 	id := "component.id"
 
 	It("should return a new Health", func() {
-		health := component.NewHealth(id, utils.DefaultComponentType)
+		health := component.NewHealth(id, utils.DefaultComponentType, utils.DefaultHealthTarget)
 		Ω(health).ShouldNot(BeNil())
 	})
 })

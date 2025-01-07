@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	busRouteTarget = "NYC.M23.route"
+
 	mercedesComponent = "mercedes.citaro"
 	bogdanComponent   = "bogdan.A091"
 
@@ -30,7 +32,7 @@ func main() {
 
 	// define monitored components
 	busComponent, err := component.New(
-		mercedesComponent, "", true,
+		mercedesComponent, "", busRouteTarget, true,
 		[]string{speedMetricID},
 		[]string{stationsCounterID},
 		[]string{passengersCounterID},

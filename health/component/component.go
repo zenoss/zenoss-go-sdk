@@ -8,11 +8,12 @@ import (
 )
 
 // New creates a new Component object
-// If you set tType an empty string it will have "default" value assgined
+// If you set cType an empty string it will have "default" value assigned
+// Empty targetID means the Component does not impact the health of any target Component
 //
 //revive:disable:argument-limit
 func New(
-	id, tType string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
+	id, cType, targetID string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
 ) (*Component, error) {
 	set := make(map[string]struct{})
 	for _, val := range metricIDs {
@@ -27,12 +28,13 @@ func New(
 	if len(set) < len(metricIDs)+len(counterIDs)+len(totalCounterIDs) {
 		return nil, utils.ErrMeasureIDTaken
 	}
-	if tType == "" {
-		tType = utils.DefaultComponentType
+	if cType == "" {
+		cType = utils.DefaultComponentType
 	}
 	return &Component{
 		ID:              id,
-		Type:            tType,
+		Type:            cType,
+		TargetID:        targetID,
 		EnableHeartbeat: enableHeartbeat,
 		MetricIDs:       metricIDs,
 		CounterIDs:      counterIDs,
@@ -51,8 +53,10 @@ type Component struct {
 	TotalCounterIDs []string
 
 	// Type is just a string that helps you to categorize your components
-	// In future it will also help us to define proirity of different type of components
+	// In future it will also help us to define priority of different type of components
 	Type string
+	// TargetID defines a higher level target component that is impacted by the health of the current component
+	TargetID string
 
 	// whether you want the heartbeat to affect your components health
 	EnableHeartbeat bool

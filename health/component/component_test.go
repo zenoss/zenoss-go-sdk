@@ -29,13 +29,13 @@ var _ = Describe("Component Tests", func() {
 		})
 		It("should return an error if measure is not unique", func() {
 			metricIDs = append(metricIDs, mockStr)
-			component, err := component.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
+			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
 			Ω(component).Should(BeNil())
 			Ω(err).Should(Equal(utils.ErrMeasureIDTaken))
 		})
 
 		It("should return a new Component", func() {
-			component, err := component.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
+			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
 			Ω(err).Should(BeNil())
 			Ω(component).ShouldNot(BeNil())
 		})
@@ -49,7 +49,7 @@ var _ = Describe("Component Tests", func() {
 			counterIDs := []string{"someCounter"}
 			tCounterIDs := []string{"totalCounter"}
 
-			testComponent, _ = component.New(id, "", true, metricIDs, counterIDs, tCounterIDs)
+			testComponent, _ = component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
 		})
 
 		It("should return false if measure is not unique", func() {

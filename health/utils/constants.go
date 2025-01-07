@@ -4,6 +4,7 @@ package utils
 const (
 	DefaultSourceType    = "zenoss.collection.health"
 	DefaultComponentType = "default"
+	DefaultHealthTarget  = "general"
 
 	ComponentKey     = "component"
 	ComponentTypeKey = "component-type"

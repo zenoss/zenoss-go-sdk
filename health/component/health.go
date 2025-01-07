@@ -2,14 +2,15 @@ package component
 
 import "github.com/zenoss/zenoss-go-sdk/health/utils"
 
-// NewHealth initializes a new Health object with component ID
-func NewHealth(id, cType string) *Health {
+// NewHealth initializes a new Health object with component ID and target ID
+func NewHealth(id, cType, targetID string) *Health {
 	if cType == "" {
 		cType = utils.DefaultComponentType
 	}
 	return &Health{
 		ComponentID:   id,
 		ComponentType: cType,
+		TargetID:      targetID,
 
 		Status:    Healthy,
 		Heartbeat: &HeartBeat{},
@@ -39,6 +40,7 @@ func (hs HealthStatus) String() string {
 type Health struct {
 	ComponentID   string
 	ComponentType string
+	TargetID      string
 
 	Status    HealthStatus
 	Heartbeat *HeartBeat

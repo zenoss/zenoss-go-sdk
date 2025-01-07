@@ -40,7 +40,7 @@ var _ = Describe("Destination", func() {
 
 	Context("Push", func() {
 		It("should output Health info", func() {
-			health := component.NewHealth(componentID, "")
+			health := component.NewHealth(componentID, "", "")
 			summaryMessage := "Test summary"
 			health.Messages = []*component.Message{component.NewMessage(
 				summaryMessage, errors.New("err"), true, component.Unhealthy,
@@ -58,7 +58,7 @@ var _ = Describe("Destination", func() {
 		})
 
 		It("should output Health and HeartBeat info", func() {
-			health := component.NewHealth(componentID, "")
+			health := component.NewHealth(componentID, "", "")
 			health.Heartbeat = &component.HeartBeat{
 				Enabled: true,
 				Beats:   true,

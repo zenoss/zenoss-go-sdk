@@ -243,6 +243,37 @@ func (hm *healthManager) AddComponents(components []*component.Component) {
 		if hm.IsStarted() {
 			hm.componentIn <- newComponent
 		}
+		hm.updateTargetsRegistry(newComponent)
+	}
+
+	for targetID, hbEnabled := range hm.registry.getTargetsMap() {
+		// raw health must be set for target component if it has not been added explicitly
+		if _, ok := hm.registry.getRawHealthForComponent(targetID); !ok {
+			targetComponent := &component.Component{
+				ID:              targetID,
+				Type:            utils.DefaultHealthTarget,
+				EnableHeartbeat: hbEnabled,
+			}
+			hm.registry.setRawHealthForComponent(newRawHealth(targetComponent))
+			if hm.IsStarted() {
+				hm.componentIn <- targetComponent
+			}
+		}
+	}
+}
+
+func (hm *healthManager) updateTargetsRegistry(c *component.Component) {
+	if c == nil || c.TargetID == "" {
+		return
+	}
+	tRegistered, tHeartbeatEnabled := hm.registry.checkTarget(c.TargetID)
+	if !tRegistered {
+		hm.registry.setTarget(c.TargetID, c.EnableHeartbeat)
+		// If a target component is automatically created, whether its heartbeat is enabled will be determined
+		// by the enabled heartbeat of at least one impacting component.
+		// If the target component is added manually, the enabled heartbeat must be set explicitly
+	} else if !tHeartbeatEnabled && c.EnableHeartbeat {
+		hm.registry.setTarget(c.TargetID, true)
 	}
 }
 
@@ -379,7 +410,7 @@ func (*healthManager) buildComponentFromMeasure(measure *ComponentMeasurement) (
 		counterIDs = []string{measure.MeasureID}
 	}
 	component, err := component.New(
-		measure.ComponentID, utils.DefaultComponentType, enableHeartbeat,
+		measure.ComponentID, utils.DefaultComponentType, "", enableHeartbeat,
 		metricIDs, counterIDs, totalCounterIDs,
 	)
 	if err != nil { // shouldn't ever happen here
@@ -415,20 +446,60 @@ func (hm *healthManager) healthForwarder(ctx context.Context, configUpd <-chan *
 	}
 }
 
+type targetInfo struct {
+	componentID string
+
+	impactsCount   int
+	degradedCount  int
+	unhealthyCount int
+
+	ownHealth  *component.Health
+	impactHB   *component.HeartBeat
+	impactMsgs []*component.Message
+}
+
 func (hm *healthManager) writeHealthResult(healthIn chan<- *component.Health) {
 	hm.registry.lock()
 	defer hm.registry.unlock()
 
+	targetsInfo := map[string]*targetInfo{}
 	for _, rawHealth := range hm.registry.getRawHealthMap() {
 		debugRawHealthStats(rawHealth)
 		cHealth := hm.calculateComponentHealth(rawHealth)
-		healthIn <- cHealth
+
+		if isTargetComponent, hbEnabled := hm.registry.checkTarget(cHealth.ComponentID); isTargetComponent {
+			if _, ok := targetsInfo[cHealth.ComponentID]; !ok {
+				targetsInfo[cHealth.ComponentID] = &targetInfo{
+					componentID: cHealth.ComponentID,
+					impactHB:    &component.HeartBeat{Enabled: hbEnabled},
+				}
+			}
+			targetsInfo[cHealth.ComponentID].ownHealth = cHealth
+		} else {
+			healthIn <- cHealth
+
+			// current component impacts some target component and is not impacted by any other component
+			if cHealth.TargetID != "" {
+				if _, ok := targetsInfo[cHealth.TargetID]; !ok {
+					targetsInfo[cHealth.TargetID] = &targetInfo{componentID: cHealth.TargetID}
+				}
+				hm.updateImpactedTargetInfo(targetsInfo[cHealth.TargetID], cHealth)
+			}
+		}
+
 		hm.cleanHealthValues(rawHealth)
+	}
+
+	for tID, tInfo := range targetsInfo {
+		// build and push health for target components starting with the highest level ones
+		if tInfo.ownHealth.TargetID == "" {
+			hm.buildAndPushHealthForTarget(tID, targetsInfo, healthIn)
+		}
 	}
 }
 
 func (*healthManager) calculateComponentHealth(rawHealth *rawHealth) *component.Health {
-	health := component.NewHealth(rawHealth.component.ID, rawHealth.component.Type)
+	health := component.NewHealth(rawHealth.component.ID, rawHealth.component.Type, rawHealth.component.TargetID)
 	health.Status = rawHealth.status
 	health.Heartbeat.Enabled = rawHealth.component.EnableHeartbeat
 	health.Heartbeat.Beats = rawHealth.heartBeat
@@ -461,6 +532,72 @@ func (*healthManager) cleanHealthValues(rawHealth *rawHealth) {
 		if len(mValues) > 0 {
 			rawHealth.rawMetrics[metricID] = []float64{}
 		}
+	}
+}
+
+func (hm *healthManager) buildAndPushHealthForTarget(
+	currentTargetID string, targetsInfo map[string]*targetInfo, healthIn chan<- *component.Health,
+) *component.Health {
+	currentTargetInfo := targetsInfo[currentTargetID]
+
+	for otherTargetID, otherTargetInfo := range targetsInfo {
+		// if current target component is affected by a lower level target component
+		// its health should be processed first to account for its impact
+		if otherTargetInfo.ownHealth.TargetID == currentTargetID {
+			impactingTC := hm.buildAndPushHealthForTarget(otherTargetID, targetsInfo, healthIn)
+			hm.updateImpactedTargetInfo(currentTargetInfo, impactingTC)
+		}
+	}
+
+	currentTargetInfo.ownHealth.Status = hm.calculateTargetHealthStatus(currentTargetInfo)
+	currentTargetInfo.ownHealth.Messages = append(currentTargetInfo.ownHealth.Messages, currentTargetInfo.impactMsgs...)
+	currentTargetInfo.ownHealth.Heartbeat = currentTargetInfo.impactHB
+	healthIn <- currentTargetInfo.ownHealth
+	return currentTargetInfo.ownHealth
+}
+
+func (hm *healthManager) updateImpactedTargetInfo(targetInfo *targetInfo, impactedBy *component.Health) {
+	targetInfo.impactsCount++
+
+	switch impactedBy.Status {
+	case component.Degrade:
+		targetInfo.degradedCount++
+		targetInfo.impactMsgs = append(targetInfo.impactMsgs, &component.Message{
+			Summary:      fmt.Sprintf("%s degraded", impactedBy.ComponentID),
+			AffectHealth: true,
+			HealthStatus: impactedBy.Status,
+		})
+	case component.Unhealthy:
+		targetInfo.unhealthyCount++
+		targetInfo.impactMsgs = append(targetInfo.impactMsgs, &component.Message{
+			Summary:      fmt.Sprintf("%s unhealthy", impactedBy.ComponentID),
+			AffectHealth: true,
+			HealthStatus: impactedBy.Status,
+		})
+	default:
+		// do nothing
+	}
+
+	if targetInfo.impactHB == nil {
+		_, hbEnabled := hm.registry.checkTarget(targetInfo.componentID)
+		targetInfo.impactHB = &component.HeartBeat{Enabled: hbEnabled}
+	}
+	if impactedBy.Heartbeat.Beats {
+		targetInfo.impactHB.Beats = true
+	}
+}
+
+func (*healthManager) calculateTargetHealthStatus(tInfo *targetInfo) component.HealthStatus {
+	ratio := float64(tInfo.degradedCount+tInfo.unhealthyCount) / float64(tInfo.impactsCount)
+	switch {
+	case tInfo.unhealthyCount >= 1 || (tInfo.impactsCount > 2 && ratio >= 0.5):
+		// at least one component is unhealthy or half or more are degraded -> target is unhealthy
+		return component.Unhealthy
+	case ratio > 0:
+		// one or less than half of the components are degraded -> target is degraded
+		return component.Degrade
+	default:
+		return component.Healthy
 	}
 }
 

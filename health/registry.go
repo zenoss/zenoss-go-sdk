@@ -7,7 +7,7 @@ import (
 )
 
 func newRawHealth(t *component.Component) *rawHealth {
-	cHealth := &rawHealth{
+	tHealth := &rawHealth{
 		component:     t,
 		status:        component.Healthy,
 		heartBeat:     false,
@@ -17,9 +17,9 @@ func newRawHealth(t *component.Component) *rawHealth {
 		messages:      make([]*component.Message, 0),
 	}
 	for _, metricID := range t.MetricIDs {
-		cHealth.rawMetrics[metricID] = make([]float64, 0)
+		tHealth.rawMetrics[metricID] = make([]float64, 0)
 	}
-	return cHealth
+	return tHealth
 }
 
 // rawHealth is a struct that keeps component information together with raw component health
@@ -41,19 +41,24 @@ type healthRegistry interface {
 	getRawHealthForComponent(componentID string) (*rawHealth, bool)
 	setRawHealthForComponent(rawComponentHealth *rawHealth)
 	getRawHealthMap() map[string]*rawHealth
+	checkTarget(componentID string) (registered bool, hbEnabled bool)
+	setTarget(componentID string, hbEnabled bool)
+	getTargetsMap() map[string]bool
 }
 
 func newHealthRegistry() healthRegistry {
 	return &memRegistry{
-		mutex:     &sync.Mutex{},
-		rawHealth: make(map[string]*rawHealth),
+		mutex:            &sync.Mutex{},
+		rawHealth:        make(map[string]*rawHealth),
+		targetComponents: make(map[string]bool),
 	}
 }
 
 // memRegistry is a healthRegistry implementation that keeps all raw health in RAM
 type memRegistry struct {
-	mutex     *sync.Mutex
-	rawHealth map[string]*rawHealth
+	mutex            *sync.Mutex
+	rawHealth        map[string]*rawHealth
+	targetComponents map[string]bool
 }
 
 func (reg *memRegistry) lock() {
@@ -75,4 +80,17 @@ func (reg *memRegistry) setRawHealthForComponent(rawComponentHealth *rawHealth) 
 
 func (reg *memRegistry) getRawHealthMap() map[string]*rawHealth {
 	return reg.rawHealth
+}
+
+func (reg *memRegistry) checkTarget(componentID string) (registered bool, hbEnabled bool) {
+	hbEnabled, registered = reg.targetComponents[componentID]
+	return
+}
+
+func (reg *memRegistry) setTarget(componentID string, hbEnabled bool) {
+	reg.targetComponents[componentID] = hbEnabled
+}
+
+func (reg *memRegistry) getTargetsMap() map[string]bool {
+	return reg.targetComponents
 }

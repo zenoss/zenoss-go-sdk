@@ -79,10 +79,10 @@ var _ = Describe("Writer", func() {
 			componentID := "testComponent"
 			empty := []string{}
 			hComponent, _ := component.New(
-				componentID, utils.DefaultComponentType, false,
+				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
 				empty, empty, empty,
 			)
-			h := component.NewHealth(componentID, utils.DefaultComponentType)
+			h := component.NewHealth(componentID, utils.DefaultComponentType, utils.DefaultHealthTarget)
 
 			var wg sync.WaitGroup
 			hCh := make(chan *component.Health)
