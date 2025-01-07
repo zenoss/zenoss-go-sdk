@@ -871,12 +871,12 @@ var _ = Describe("Health Manager", Ordered, func() {
 			mesuresCh <- hStatus
 
 			// low2
-			metricValue1 := float64(6.4)
+			low2metricValue := float64(6.4)
 			metricMeasure := &health.ComponentMeasurement{
 				ComponentID: low2.ID,
 				MeasureID:   testMetric,
 				MeasureType: health.Metric,
-				MetricValue: metricValue1,
+				MetricValue: low2metricValue,
 			}
 			mesuresCh <- metricMeasure
 
@@ -893,22 +893,22 @@ var _ = Describe("Health Manager", Ordered, func() {
 			mesuresCh <- msg
 
 			// low4
-			counterValue := int32(1)
+			low4counterValue := int32(1)
 			counterMeasure := &health.ComponentMeasurement{
 				ComponentID:   low4.ID,
 				MeasureID:     testCounter,
 				MeasureType:   health.CounterChange,
-				CounterChange: counterValue,
+				CounterChange: low4counterValue,
 			}
 			mesuresCh <- counterMeasure
 
 			// target.mid0
-			counterValue2 := int32(2)
+			mid0counterValue := int32(2)
 			counterMeasure = &health.ComponentMeasurement{
 				ComponentID:   mid0.ID,
 				MeasureID:     testCounter,
 				MeasureType:   health.CounterChange,
-				CounterChange: counterValue2,
+				CounterChange: mid0counterValue,
 			}
 			mesuresCh <- counterMeasure
 
@@ -945,7 +945,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 
 			Ω(lowComponentsHealth["low2"]).ShouldNot(BeNil())
 			Ω(lowComponentsHealth["low2"].Status).Should(Equal(component.Healthy))
-			Ω(lowComponentsHealth["low2"].Metrics[testMetric]).Should(Equal(metricValue1))
+			Ω(lowComponentsHealth["low2"].Metrics[testMetric]).Should(Equal(low2metricValue))
 
 			Ω(lowComponentsHealth["low3"]).ShouldNot(BeNil())
 			Ω(lowComponentsHealth["low3"].Status).Should(Equal(component.Unhealthy))
@@ -958,12 +958,13 @@ var _ = Describe("Health Manager", Ordered, func() {
 
 			Ω(lowComponentsHealth["low4"]).ShouldNot(BeNil())
 			Ω(lowComponentsHealth["low4"].Status).Should(Equal(component.Healthy))
-			Ω(lowComponentsHealth["low4"].Counters[testCounter]).Should(Equal(counterValue))
+			Ω(lowComponentsHealth["low4"].Counters[testCounter]).Should(Equal(low4counterValue))
 
 			Ω(targetComponentsHealth["target.mid0"]).ShouldNot(BeNil())
 			Ω(targetComponentsHealth["target.mid0"].Status).Should(Equal(component.Degrade))
 			Ω(targetComponentsHealth["target.mid0"].Heartbeat.Enabled).Should(BeTrue())
 			Ω(targetComponentsHealth["target.mid0"].Heartbeat.Beats).Should(BeTrue())
+			Ω(targetComponentsHealth["target.mid0"].Counters[testCounter]).Should(Equal(mid0counterValue))
 			Ω(targetComponentsHealth["target.mid0"].Messages).Should(ContainElement(&component.Message{
 				Summary:      "low1 degraded",
 				AffectHealth: true,
