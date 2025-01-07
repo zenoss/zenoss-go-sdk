@@ -10,23 +10,23 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 )
 
 var _ = Describe("Destination", func() {
 	var (
-		ctx      context.Context
-		logDest  writer.Destination
-		buf      bytes.Buffer
-		targetID string
+		ctx         context.Context
+		logDest     writer.Destination
+		buf         bytes.Buffer
+		componentID string
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		buf = bytes.Buffer{}
-		targetID = "test"
+		componentID = "test"
 	})
 
 	Context("NewLogDestination", func() {
@@ -40,14 +40,14 @@ var _ = Describe("Destination", func() {
 
 	Context("Push", func() {
 		It("should output Health info", func() {
-			health := target.NewHealth(targetID, "")
+			health := component.NewHealth(componentID, "")
 			summaryMessage := "Test summary"
-			health.Messages = []*target.Message{target.NewMessage(
-				summaryMessage, errors.New("err"), true, target.Unhealthy,
+			health.Messages = []*component.Message{component.NewMessage(
+				summaryMessage, errors.New("err"), true, component.Unhealthy,
 			)}
 			expectedMsg := fmt.Sprintf(
-				"TargetID: %s, Status=Healthy, Counters=map[], Metrics=map[], Messages=[%s]",
-				targetID, summaryMessage)
+				"ComponentID: %s, Status=Healthy, Counters=map[], Metrics=map[], Messages=[%s]",
+				componentID, summaryMessage)
 
 			err := logDest.Push(ctx, health)
 			var output map[string]interface{}
@@ -58,14 +58,14 @@ var _ = Describe("Destination", func() {
 		})
 
 		It("should output Health and HeartBeat info", func() {
-			health := target.NewHealth(targetID, "")
-			health.Heartbeat = &target.HeartBeat{
+			health := component.NewHealth(componentID, "")
+			health.Heartbeat = &component.HeartBeat{
 				Enabled: true,
 				Beats:   true,
 			}
 			expectedMsg := fmt.Sprintf(
-				"TargetID: %s, Status=Healthy, Heartbeat=true, Counters=map[], Metrics=map[], Messages=[]",
-				targetID)
+				"ComponentID: %s, Status=Healthy, Heartbeat=true, Counters=map[], Metrics=map[], Messages=[]",
+				componentID)
 
 			err := logDest.Push(ctx, health)
 			var output map[string]interface{}

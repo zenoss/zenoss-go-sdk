@@ -6,8 +6,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/zenoss/zenoss-go-sdk/endpoint"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	"github.com/zenoss/zenoss-go-sdk/health/log"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 	endpointLog "github.com/zenoss/zenoss-go-sdk/log"
 	sdk_utils "github.com/zenoss/zenoss-go-sdk/utils"
@@ -64,13 +64,13 @@ type ZCDestination struct {
 	Config   *ZCDestinationConfig
 }
 
-// Register takes target, builds model and pushes it to preconfigured ZC endpoint
-func (d *ZCDestination) Register(ctx context.Context, target *target.Target) error {
+// Register takes component, builds model and pushes it to preconfigured ZC endpoint
+func (d *ZCDestination) Register(ctx context.Context, component *component.Component) error {
 	model := &zpb.Model{}
 	model.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
-	model.Dimensions = d.buildTargetDimensions(target.ID)
-	model.MetadataFields = d.buildTargetMetadata()
-	model.MetadataFields.Fields[utils.ZenossNameField] = sdk_utils.StrToStructValue(target.ID)
+	model.Dimensions = d.buildComponentDimensions(component.ID)
+	model.MetadataFields = d.buildComponentMetadata()
+	model.MetadataFields.Fields[utils.ZenossNameField] = sdk_utils.StrToStructValue(component.ID)
 
 	result, err := d.Endpoint.PutModels(ctx, &zpb.Models{Models: []*zpb.Model{model}})
 	if err != nil {
@@ -82,7 +82,7 @@ func (d *ZCDestination) Register(ctx context.Context, target *target.Target) err
 }
 
 // Push takes health, builds metrics and pushes them to preconfigured ZC endpoint
-func (d *ZCDestination) Push(ctx context.Context, health *target.Health) error {
+func (d *ZCDestination) Push(ctx context.Context, health *component.Health) error {
 	canonicalMetrics := d.buildCanonicalMetrics(health)
 
 	var cmpMetrics []*zpb.CompactMetric
@@ -106,36 +106,36 @@ func (d *ZCDestination) Push(ctx context.Context, health *target.Health) error {
 	return nil
 }
 
-func (d *ZCDestination) buildCanonicalMetrics(health *target.Health) []*zpb.Metric {
+func (d *ZCDestination) buildCanonicalMetrics(health *component.Health) []*zpb.Metric {
 	metrics := make([]*zpb.Metric, 0)
 	for mID, mValue := range health.Metrics {
 		metrics = append(metrics, d.buildMetric(
-			health.TargetID, mID, mValue,
+			health.ComponentID, mID, mValue,
 		))
 	}
 
 	for cID, cValue := range health.Counters {
 		metrics = append(metrics, d.buildMetric(
-			health.TargetID, cID, float64(cValue),
+			health.ComponentID, cID, float64(cValue),
 		))
 	}
 
 	return metrics
 }
 
-func (d *ZCDestination) buildMetric(targetID, metricID string, value float64) *zpb.Metric {
+func (d *ZCDestination) buildMetric(componentID, metricID string, value float64) *zpb.Metric {
 	metric := &zpb.Metric{}
 	metric.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
 	metric.Metric = metricID
 	metric.Value = value
-	metric.Dimensions = d.buildTargetDimensions(targetID)
-	metric.MetadataFields = d.buildTargetMetadata()
+	metric.Dimensions = d.buildComponentDimensions(componentID)
+	metric.MetadataFields = d.buildComponentMetadata()
 	return metric
 }
 
-func (d *ZCDestination) buildTargetDimensions(targetID string) map[string]string {
+func (d *ZCDestination) buildComponentDimensions(componentID string) map[string]string {
 	dims := make(map[string]string)
-	dims[utils.TargetKey] = targetID
+	dims[utils.ComponentKey] = componentID
 	if d.Config.SourceType == "" {
 		dims[utils.SourceTypeKey] = utils.DefaultSourceType
 	} else {
@@ -145,7 +145,7 @@ func (d *ZCDestination) buildTargetDimensions(targetID string) map[string]string
 	return dims
 }
 
-func (d *ZCDestination) buildTargetMetadata() *structpb.Struct {
+func (d *ZCDestination) buildComponentMetadata() *structpb.Struct {
 	metadata := make(map[string]*structpb.Value)
 	for key, value := range d.Config.Metadata {
 		metadata[key] = sdk_utils.StrToStructValue(value)

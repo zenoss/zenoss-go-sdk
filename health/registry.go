@@ -3,34 +3,34 @@ package health
 import (
 	"sync"
 
-	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 )
 
-func newRawHealth(t *target.Target) *rawHealth {
-	tHealth := &rawHealth{
-		target:        t,
-		status:        target.Healthy,
+func newRawHealth(t *component.Component) *rawHealth {
+	cHealth := &rawHealth{
+		component:     t,
+		status:        component.Healthy,
 		heartBeat:     false,
 		counters:      make(map[string]int32),
 		totalCounters: make(map[string]int32),
 		rawMetrics:    make(map[string][]float64),
-		messages:      make([]*target.Message, 0),
+		messages:      make([]*component.Message, 0),
 	}
 	for _, metricID := range t.MetricIDs {
-		tHealth.rawMetrics[metricID] = make([]float64, 0)
+		cHealth.rawMetrics[metricID] = make([]float64, 0)
 	}
-	return tHealth
+	return cHealth
 }
 
-// rawHealth is a struct that keeps target information together with raw target health
+// rawHealth is a struct that keeps component information together with raw component health
 type rawHealth struct {
-	target        *target.Target
-	status        target.HealthStatus
+	component     *component.Component
+	status        component.HealthStatus
 	heartBeat     bool
 	counters      map[string]int32
 	totalCounters map[string]int32
 	rawMetrics    map[string][]float64
-	messages      []*target.Message
+	messages      []*component.Message
 }
 
 // healthRegistry keeps raw health data and provides an interface to get and update it
@@ -38,8 +38,8 @@ type rawHealth struct {
 type healthRegistry interface {
 	lock()
 	unlock()
-	getRawHealthForTarget(targetID string) (*rawHealth, bool)
-	setRawHealthForTarget(rawTargetHealth *rawHealth)
+	getRawHealthForComponent(componentID string) (*rawHealth, bool)
+	setRawHealthForComponent(rawComponentHealth *rawHealth)
 	getRawHealthMap() map[string]*rawHealth
 }
 
@@ -64,13 +64,13 @@ func (reg *memRegistry) unlock() {
 	reg.mutex.Unlock()
 }
 
-func (reg *memRegistry) getRawHealthForTarget(targetID string) (*rawHealth, bool) {
-	health, ok := reg.rawHealth[targetID]
+func (reg *memRegistry) getRawHealthForComponent(componentID string) (*rawHealth, bool) {
+	health, ok := reg.rawHealth[componentID]
 	return health, ok
 }
 
-func (reg *memRegistry) setRawHealthForTarget(rawTargetHealth *rawHealth) {
-	reg.rawHealth[rawTargetHealth.target.ID] = rawTargetHealth
+func (reg *memRegistry) setRawHealthForComponent(rawComponentHealth *rawHealth) {
+	reg.rawHealth[rawComponentHealth.component.ID] = rawComponentHealth
 }
 
 func (reg *memRegistry) getRawHealthMap() map[string]*rawHealth {

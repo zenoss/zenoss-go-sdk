@@ -10,8 +10,8 @@ type Config struct {
 	// and send them to a health writer.
 	CollectionCycle time.Duration
 
-	// RegistrationOnCollect shows if we want to allow to collect data for not registered targets
-	// Targets will be created automatically. Not recommended to use
+	// RegistrationOnCollect shows if we want to allow to collect data for not registered components
+	// Components will be created automatically. Not recommended to use
 	// Note: all counters will be added as default counters
 	RegistrationOnCollect bool
 

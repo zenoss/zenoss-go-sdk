@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
@@ -16,28 +16,28 @@ var (
 	collectorLock sync.Mutex
 )
 
-// Collector provides different methods to send health information per target
+// Collector provides different methods to send health information per component
 type Collector interface {
 	// HeartBeat runs a new goroutine that sends heartbeat data once per collection cycle.
 	// It returns the cancel that will stop the heartbeat goroutine.
-	HeartBeat(targetID string) (context.CancelFunc, error)
-	// UpdateCycleDuration updates heartbeat cycle duration with provided value for all active targets
+	HeartBeat(componentID string) (context.CancelFunc, error)
+	// UpdateCycleDuration updates heartbeat cycle duration with provided value for all active components
 	UpdateCycleDuration(d time.Duration) error
 	// AddToCounter updates counter with provided value (can be negative).
 	// Used for both TotalCounters and Counters
-	AddToCounter(targetID, counterID string, value int32) error
+	AddToCounter(componentID, counterID string, value int32) error
 	// AddMetricValue stores one more metric for id
 	// In the end of the cycle the manager will count an average value
-	AddMetricValue(targetID, metricID string, value float64) error
-	// HealthMessage sends a message for target. More info in target.Message struct
-	HealthMessage(targetID string, msg *target.Message) error
-	// ChangeHealth marks your target as healthy (true) or unhealthy (false). Target health will not
+	AddMetricValue(componentID, metricID string, value float64) error
+	// HealthMessage sends a message for component. More info in component.Message struct
+	HealthMessage(componentID string, msg *component.Message) error
+	// ChangeHealth marks your component as healthy (true) or unhealthy (false). Component health will not
 	// be restored by itself, you need to call this method if you want to restore healthy status
-	ChangeHealth(targetID string, healthStatus target.HealthStatus) error
+	ChangeHealth(componentID string, healthStatus component.HealthStatus) error
 }
 
 // NewCollector creates a new healthCollector instance.
-func NewCollector(cycleDuration time.Duration, metricsIn chan<- *TargetMeasurement) Collector {
+func NewCollector(cycleDuration time.Duration, metricsIn chan<- *ComponentMeasurement) Collector {
 	return &healthCollector{
 		cycleDuration: cycleDuration,
 		metricsIn:     metricsIn,
@@ -85,7 +85,7 @@ type healthCollector struct {
 	cycleDuration time.Duration
 	heartbeats    sync.Map
 	mu            sync.RWMutex
-	metricsIn     chan<- *TargetMeasurement
+	metricsIn     chan<- *ComponentMeasurement
 	done          chan struct{}
 	doneOnce      sync.Once
 }
@@ -95,18 +95,18 @@ type heartbeatTracker struct {
 	ticker *time.Ticker
 }
 
-func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error) {
+func (hc *healthCollector) HeartBeat(componentID string) (context.CancelFunc, error) {
 	select {
 	case <-hc.done:
 		return nil, utils.ErrDeadCollector
 	default:
 	}
 
-	if hb, exists := hc.heartbeats.Load(targetID); exists {
+	if hb, exists := hc.heartbeats.Load(componentID); exists {
 		heartbeat := hb.(*heartbeatTracker)
 		heartbeat.ticker.Stop()
 		heartbeat.cancel()
-		hc.heartbeats.Delete(targetID)
+		hc.heartbeats.Delete(componentID)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -115,13 +115,13 @@ func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error
 		hc.mu.RLock()
 		ticker := time.NewTicker(hc.cycleDuration)
 		hc.mu.RUnlock()
-		hc.heartbeats.Store(targetID, &heartbeatTracker{
+		hc.heartbeats.Store(componentID, &heartbeatTracker{
 			cancel: cancel,
 			ticker: ticker,
 		})
 		defer func() {
 			ticker.Stop()
-			hc.heartbeats.Delete(targetID)
+			hc.heartbeats.Delete(componentID)
 		}()
 
 		for {
@@ -131,8 +131,8 @@ func (hc *healthCollector) HeartBeat(targetID string) (context.CancelFunc, error
 			case <-hc.done:
 				return
 			case <-ticker.C:
-				measure := &TargetMeasurement{
-					TargetID:    targetID,
+				measure := &ComponentMeasurement{
+					ComponentID: componentID,
 					MeasureType: Heartbeat,
 				}
 
@@ -157,25 +157,25 @@ func (hc *healthCollector) UpdateCycleDuration(newDuration time.Duration) error 
 	hc.cycleDuration = newDuration
 	hc.mu.Unlock()
 
-	targets := 0
+	components := 0
 	hc.heartbeats.Range(func(_, hb any) bool {
 		heartbeat := hb.(*heartbeatTracker)
 		heartbeat.ticker.Reset(newDuration)
-		targets++
+		components++
 		return true
 	})
-	if targets > 0 {
-		logging.GetLogger().Info().Msgf("Updated heartbeat interval to %v for %d targets",
-			newDuration, targets,
+	if components > 0 {
+		logging.GetLogger().Info().Msgf("Updated heartbeat interval to %v for %d components",
+			newDuration, components,
 		)
 	}
 	return nil
 }
 
-func (hc *healthCollector) AddToCounter(targetID, counterID string, value int32) error {
+func (hc *healthCollector) AddToCounter(componentID, counterID string, value int32) error {
 	select {
-	case hc.metricsIn <- &TargetMeasurement{
-		TargetID:      targetID,
+	case hc.metricsIn <- &ComponentMeasurement{
+		ComponentID:   componentID,
 		MeasureType:   CounterChange,
 		MeasureID:     counterID,
 		CounterChange: value,
@@ -186,10 +186,10 @@ func (hc *healthCollector) AddToCounter(targetID, counterID string, value int32)
 	}
 }
 
-func (hc *healthCollector) AddMetricValue(targetID, metricID string, value float64) error {
+func (hc *healthCollector) AddMetricValue(componentID, metricID string, value float64) error {
 	select {
-	case hc.metricsIn <- &TargetMeasurement{
-		TargetID:    targetID,
+	case hc.metricsIn <- &ComponentMeasurement{
+		ComponentID: componentID,
 		MeasureType: Metric,
 		MeasureID:   metricID,
 		MetricValue: value,
@@ -200,10 +200,10 @@ func (hc *healthCollector) AddMetricValue(targetID, metricID string, value float
 	}
 }
 
-func (hc *healthCollector) HealthMessage(targetID string, msg *target.Message) error {
+func (hc *healthCollector) HealthMessage(componentID string, msg *component.Message) error {
 	select {
-	case hc.metricsIn <- &TargetMeasurement{
-		TargetID:    targetID,
+	case hc.metricsIn <- &ComponentMeasurement{
+		ComponentID: componentID,
 		MeasureType: Message,
 		Message:     msg,
 	}:
@@ -213,10 +213,10 @@ func (hc *healthCollector) HealthMessage(targetID string, msg *target.Message) e
 	}
 }
 
-func (hc *healthCollector) ChangeHealth(targetID string, status target.HealthStatus) error {
+func (hc *healthCollector) ChangeHealth(componentID string, status component.HealthStatus) error {
 	select {
-	case hc.metricsIn <- &TargetMeasurement{
-		TargetID:     targetID,
+	case hc.metricsIn <- &ComponentMeasurement{
+		ComponentID:  componentID,
 		MeasureType:  HealthStatus,
 		HealthStatus: status,
 	}:
@@ -239,19 +239,19 @@ const (
 	Message
 )
 
-// TargetMeasurement is used by collector to send data.
+// ComponentMeasurement is used by collector to send data.
 // You should define a measureType so manager will know what field it should looking for
 // Can be splitted into different structs and wrapped with the one interface in case
 // if we will have too many different measure types (should save us some ram)
-type TargetMeasurement struct {
-	TargetID    string
+type ComponentMeasurement struct {
+	ComponentID string
 	MeasureType MeasureType
 
 	MeasureID string // used for both metrics and counters
 
 	// actual measurement fields
-	HealthStatus  target.HealthStatus
-	Message       *target.Message
+	HealthStatus  component.HealthStatus
+	Message       *component.Message
 	CounterChange int32
 	MetricValue   float64
 }

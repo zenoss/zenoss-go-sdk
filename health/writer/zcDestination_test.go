@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/zenoss/zenoss-go-sdk/endpoint"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
@@ -24,14 +24,14 @@ var _ = Describe("Destination", func() {
 		epConfig *endpoint.Config
 		zcDest   *writer.ZCDestination
 
-		targetID  string
-		mockedErr error
+		componentID string
+		mockedErr   error
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 
-		targetID = "testTarget"
+		componentID = "testComponent"
 		mockedErr = errors.New("mocked")
 
 		out = &data_receiver.MockDataReceiverServiceClient{}
@@ -73,7 +73,7 @@ var _ = Describe("Destination", func() {
 			counterName := "testCounter"
 			cValue := int32(10)
 
-			health := target.NewHealth(targetID, "")
+			health := component.NewHealth(componentID, "")
 			health.Metrics = make(map[string]float64)
 			health.Metrics[metricName] = value
 			health.Counters = make(map[string]int32)
@@ -95,7 +95,7 @@ var _ = Describe("Destination", func() {
 		})
 
 		It("should not fail even if zc is not avilable", func() {
-			health := target.NewHealth(targetID, "")
+			health := component.NewHealth(componentID, "")
 			health.Metrics = make(map[string]float64)
 			health.Metrics[metricName] = value
 
@@ -110,10 +110,10 @@ var _ = Describe("Destination", func() {
 	})
 
 	Context("Register", func() {
-		It("should push Target info as a model", func() {
+		It("should push Component info as a model", func() {
 			empty := []string{}
-			target, err := target.New(
-				targetID, utils.DefaultTargetType, false,
+			component, err := component.New(
+				componentID, utils.DefaultComponentType, false,
 				empty, empty, empty,
 			)
 			Ω(err).Should(BeNil())
@@ -123,26 +123,26 @@ var _ = Describe("Destination", func() {
 				Succeeded: 1,
 			}, nil)
 
-			err = zcDest.Register(ctx, target)
+			err = zcDest.Register(ctx, component)
 			zcDest.Endpoint.Flush()
 
 			Ω(err).Should(BeNil())
 			lastPush := out.Calls[len(out.Calls)-1].Arguments[1].(*data_receiver.Models)
 			Ω(len(lastPush.Models)).Should(Equal(1))
-			Ω(lastPush.Models[0].Dimensions[utils.TargetKey]).Should(Equal(targetID))
+			Ω(lastPush.Models[0].Dimensions[utils.ComponentKey]).Should(Equal(componentID))
 		})
 
 		It("should not fail even if zc is not avilable", func() {
 			empty := []string{}
-			target, err := target.New(
-				targetID, utils.DefaultTargetType, false,
+			component, err := component.New(
+				componentID, utils.DefaultComponentType, false,
 				empty, empty, empty,
 			)
 			Ω(err).Should(BeNil())
 
 			out.On("PutModels", mock.Anything, mock.Anything).Return(nil, mockedErr)
 
-			err = zcDest.Register(ctx, target)
+			err = zcDest.Register(ctx, component)
 			zcDest.Endpoint.Flush()
 
 			out.AssertNumberOfCalls(GinkgoT(), "PutModels", 1)

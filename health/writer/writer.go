@@ -8,15 +8,15 @@ package writer
 import (
 	"context"
 
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	"github.com/zenoss/zenoss-go-sdk/health/log"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
 )
 
 // HealthWriter provides an ability to forward health data from manager to destinations
 type HealthWriter interface {
 	// Start should be run in goroutine.
 	// It listens for healthIn channel and sends data to configured destinations
-	Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target)
+	Start(ctx context.Context, healthIn <-chan *component.Health, componentIn <-chan *component.Component)
 	// Shutdown method gently terminates the writer
 	Shutdown()
 }
@@ -38,7 +38,7 @@ type writer struct {
 	stopSig chan struct{}
 }
 
-func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targetIn <-chan *target.Target) {
+func (w *writer) Start(ctx context.Context, healthIn <-chan *component.Health, componentIn <-chan *component.Component) {
 	for {
 		select {
 		case healthData, more := <-healthIn:
@@ -51,14 +51,14 @@ func (w *writer) Start(ctx context.Context, healthIn <-chan *target.Health, targ
 					log.GetLogger().Error().AnErr("error", err).Msg("Unable to push health message")
 				}
 			}
-		case targetData, more := <-targetIn:
+		case componentData, more := <-componentIn:
 			if !more {
 				return
 			}
 			for _, dest := range w.destinations {
-				err := dest.Register(ctx, targetData)
+				err := dest.Register(ctx, componentData)
 				if err != nil {
-					log.GetLogger().Error().AnErr("error", err).Msg("Unable to register target")
+					log.GetLogger().Error().AnErr("error", err).Msg("Unable to register component")
 				}
 			}
 		case <-w.stopSig:

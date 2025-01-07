@@ -4,16 +4,16 @@ import (
 	"context"
 
 	"github.com/rs/zerolog"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 )
 
 // Destination is a simple interface that is used by writer to output health data
 type Destination interface {
-	// Register takes a target object and do registration on destination side if needed
-	Register(ctx context.Context, target *target.Target) error
-	// Push takes a target health object and
+	// Register takes a component object and do registration on destination side if needed
+	Register(ctx context.Context, component *component.Component) error
+	// Push takes a component health object and
 	// does final calls to send data outside of health monitoring tool
-	Push(ctx context.Context, health *target.Health) error
+	Push(ctx context.Context, health *component.Health) error
 }
 
 // NewLogDestination creates a new LogDestination instance
@@ -28,26 +28,26 @@ type LogDestination struct {
 }
 
 // Push takes health data and builds a nice log message with it on info level
-func (l *LogDestination) Push(_ context.Context, health *target.Health) error {
-	l.logTargetHealth(health)
+func (l *LogDestination) Push(_ context.Context, health *component.Health) error {
+	l.logComponentHealth(health)
 	return nil
 }
 
-// Register takes target data and builds a nice log message with it on info level
-func (l *LogDestination) Register(_ context.Context, target *target.Target) error {
-	l.logTargetInfo(target)
+// Register takes component data and builds a nice log message with it on info level
+func (l *LogDestination) Register(_ context.Context, component *component.Component) error {
+	l.logComponentInfo(component)
 	return nil
 }
 
-func (l *LogDestination) logTargetInfo(target *target.Target) {
-	l.log.Info().Msgf("Got target update "+
-		"TargetID: %s, Heartbeat Enabled: %t, CounterIDs=%v, TotalCounterIDs=%v MetricIDs=%v",
-		target.ID, target.EnableHeartbeat,
-		target.CounterIDs, target.TotalCounterIDs, target.MetricIDs,
+func (l *LogDestination) logComponentInfo(component *component.Component) {
+	l.log.Info().Msgf("Got component update "+
+		"ComponentID: %s, Heartbeat Enabled: %t, CounterIDs=%v, TotalCounterIDs=%v MetricIDs=%v",
+		component.ID, component.EnableHeartbeat,
+		component.CounterIDs, component.TotalCounterIDs, component.MetricIDs,
 	)
 }
 
-func (l *LogDestination) logTargetHealth(health *target.Health) {
+func (l *LogDestination) logComponentHealth(health *component.Health) {
 	messageSums := make([]string, len(health.Messages))
 	for i, message := range health.Messages {
 		messageSums[i] = message.Summary
@@ -55,14 +55,14 @@ func (l *LogDestination) logTargetHealth(health *target.Health) {
 
 	if health.Heartbeat.Enabled {
 		l.log.Info().Msgf(
-			"TargetID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
-			health.TargetID, health.Status, health.Heartbeat.Beats, health.Counters,
+			"ComponentID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
+			health.ComponentID, health.Status, health.Heartbeat.Beats, health.Counters,
 			health.Metrics, messageSums,
 		)
 	} else {
 		l.log.Info().Msgf(
-			"TargetID: %s, Status=%v, Counters=%v, Metrics=%v, Messages=%v",
-			health.TargetID, health.Status, health.Counters, health.Metrics, messageSums,
+			"ComponentID: %s, Status=%v, Counters=%v, Metrics=%v, Messages=%v",
+			health.ComponentID, health.Status, health.Counters, health.Metrics, messageSums,
 		)
 	}
 }
