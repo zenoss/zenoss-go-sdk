@@ -7,24 +7,24 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/zenoss/zenoss-go-sdk/health"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
 var _ = Describe("Collector", func() {
 	var (
-		testTargetID = "test.target"
-		cycle        = 200 * time.Millisecond
+		testComponentID = "test.component"
+		cycle           = 200 * time.Millisecond
 	)
 
 	Context("simple collector", func() {
 		var (
-			measureCh chan *health.TargetMeasurement
+			measureCh chan *health.ComponentMeasurement
 			collector health.Collector
 		)
 
 		BeforeEach(func() {
-			measureCh = make(chan *health.TargetMeasurement, 1)
+			measureCh = make(chan *health.ComponentMeasurement, 1)
 			collector = health.NewCollector(cycle, measureCh)
 		})
 
@@ -34,7 +34,7 @@ var _ = Describe("Collector", func() {
 
 		Context("HeartBeat", func() {
 			It("should count a heartbeat and stop after cancel called", func() {
-				hbCancel, err := collector.HeartBeat(testTargetID)
+				hbCancel, err := collector.HeartBeat(testComponentID)
 				Ω(err).Should(BeNil())
 
 				hbMeasure := <-measureCh
@@ -42,8 +42,8 @@ var _ = Describe("Collector", func() {
 				Ω(hbMeasure).ShouldNot(BeNil())
 				Ω(hbMeasure.MeasureType).Should(Equal(health.Heartbeat))
 
-				// should restart active heartbeat goroutine for existing target
-				hbCancel, err = collector.HeartBeat(testTargetID)
+				// should restart active heartbeat goroutine for existing component
+				hbCancel, err = collector.HeartBeat(testComponentID)
 				Ω(err).Should(BeNil())
 
 				hbCancel()
@@ -53,7 +53,7 @@ var _ = Describe("Collector", func() {
 		Context("AddToCounter", func() {
 			It("should send counter change measure to the channel", func() {
 				counter := int32(13)
-				err := collector.AddToCounter(testTargetID, "test.counter", counter)
+				err := collector.AddToCounter(testComponentID, "test.counter", counter)
 				Ω(err).Should(BeNil())
 
 				counterMeasure := <-measureCh
@@ -66,7 +66,7 @@ var _ = Describe("Collector", func() {
 		Context("AddMetricValue", func() {
 			It("should send metric measure to the channel", func() {
 				metric := float64(25.6)
-				err := collector.AddMetricValue(testTargetID, "test.metric", metric)
+				err := collector.AddMetricValue(testComponentID, "test.metric", metric)
 				Ω(err).Should(BeNil())
 
 				metricMeasure := <-measureCh
@@ -78,12 +78,12 @@ var _ = Describe("Collector", func() {
 
 		Context("HealthMessage", func() {
 			It("should send health message to the channel", func() {
-				message := target.NewMessage(
+				message := component.NewMessage(
 					"Error msg",
 					errors.New("error"),
-					true, target.Unhealthy)
+					true, component.Unhealthy)
 
-				err := collector.HealthMessage(testTargetID, message)
+				err := collector.HealthMessage(testComponentID, message)
 				Ω(err).Should(BeNil())
 
 				messageMeasure := <-measureCh
@@ -95,8 +95,8 @@ var _ = Describe("Collector", func() {
 
 		Context("ChangeHealth", func() {
 			It("should send update health to the channel", func() {
-				healthStatus := target.Degrade
-				err := collector.ChangeHealth(testTargetID, healthStatus)
+				healthStatus := component.Degrade
+				err := collector.ChangeHealth(testComponentID, healthStatus)
 				Ω(err).Should(BeNil())
 
 				hsMeasure := <-measureCh
@@ -116,12 +116,12 @@ var _ = Describe("Collector", func() {
 		})
 
 		It("heartbeat should return an error if collector stopped in the middle of the process", func() {
-			measureCh := make(chan *health.TargetMeasurement)
+			measureCh := make(chan *health.ComponentMeasurement)
 			collector := health.NewCollector(cycle, measureCh)
 			health.SetCollectorSingleton(collector)
 			collector, err := health.GetCollectorSingleton()
 			Ω(err).Should(BeNil())
-			_, err = collector.HeartBeat(testTargetID)
+			_, err = collector.HeartBeat(testComponentID)
 			Ω(err).Should(BeNil())
 			health.StopCollectorSingleton()
 			time.Sleep(cycle)
@@ -133,7 +133,7 @@ var _ = Describe("Collector", func() {
 			)
 
 			BeforeEach(func() {
-				measureCh := make(chan *health.TargetMeasurement)
+				measureCh := make(chan *health.ComponentMeasurement)
 				collector := health.NewCollector(cycle, measureCh)
 				health.SetCollectorSingleton(collector)
 				health.StopCollectorSingleton()
@@ -142,35 +142,35 @@ var _ = Describe("Collector", func() {
 			It("heartbeat should return an error", func() {
 				collector, err := health.GetCollectorSingleton()
 				Ω(err).Should(BeNil())
-				_, err = collector.HeartBeat(testTargetID)
+				_, err = collector.HeartBeat(testComponentID)
 				Ω(err).Should(Equal(utils.ErrDeadCollector))
 			})
 
 			It("add to counter should return an error", func() {
 				collector, err := health.GetCollectorSingleton()
 				Ω(err).Should(BeNil())
-				err = collector.AddToCounter(testTargetID, mockedMeasureID, int32(2))
+				err = collector.AddToCounter(testComponentID, mockedMeasureID, int32(2))
 				Ω(err).Should(Equal(utils.ErrDeadCollector))
 			})
 
 			It("add metric value should return an error", func() {
 				collector, err := health.GetCollectorSingleton()
 				Ω(err).Should(BeNil())
-				err = collector.AddMetricValue(testTargetID, mockedMeasureID, float64(2.65))
+				err = collector.AddMetricValue(testComponentID, mockedMeasureID, float64(2.65))
 				Ω(err).Should(Equal(utils.ErrDeadCollector))
 			})
 
 			It("health message should return an error", func() {
 				collector, err := health.GetCollectorSingleton()
 				Ω(err).Should(BeNil())
-				err = collector.HealthMessage(testTargetID, &target.Message{})
+				err = collector.HealthMessage(testComponentID, &component.Message{})
 				Ω(err).Should(Equal(utils.ErrDeadCollector))
 			})
 
 			It("change health should return an error", func() {
 				collector, err := health.GetCollectorSingleton()
 				Ω(err).Should(BeNil())
-				err = collector.ChangeHealth(testTargetID, target.Healthy)
+				err = collector.ChangeHealth(testComponentID, component.Healthy)
 				Ω(err).Should(Equal(utils.ErrDeadCollector))
 			})
 		})

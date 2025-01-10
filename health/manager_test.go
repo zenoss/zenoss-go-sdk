@@ -2,40 +2,42 @@ package health_test
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	"github.com/zenoss/zenoss-go-sdk/health"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
-var _ = Describe("Health Manager", func() {
+var _ = Describe("Health Manager", Ordered, func() {
 	var (
 		ctx     context.Context
 		manager health.Manager
 
-		mesuresCh chan *health.TargetMeasurement
-		healthCh  chan *target.Health
-		targetCh  chan *target.Target
+		mesuresCh   chan *health.ComponentMeasurement
+		healthCh    chan *component.Health
+		componentCh chan *component.Component
 
-		testTargetID     = "test.target"
+		testComponentID  = "test.component"
 		testMetric       = "test.metric"
 		testCounter      = "test.counter"
 		testTotalCounter = "total.counter"
 	)
 
-	addTestTarget := func() {
-		tar, _ := target.New(
-			testTargetID, utils.DefaultTargetType, true,
+	addTestComponent := func(target string) {
+		comp, _ := component.New(
+			testComponentID, utils.DefaultComponentType, target, true,
 			[]string{testMetric},
 			[]string{testCounter},
 			[]string{testTotalCounter},
 		)
-		targets := []*target.Target{tar}
+		components := []*component.Component{comp}
 
-		manager.AddTargets(targets)
+		manager.AddComponents(components)
 	}
 
 	Context("startup + shutdown", func() {
@@ -48,11 +50,11 @@ var _ = Describe("Health Manager", func() {
 			config.LogLevel = "fatal"
 			manager := health.NewManager(ctx, config)
 
-			mesuresCh := make(chan *health.TargetMeasurement)
-			healthCh := make(chan *target.Health)
-			targetCh := make(chan *target.Target)
+			mesuresCh := make(chan *health.ComponentMeasurement)
+			healthCh := make(chan *component.Health)
+			componentCh := make(chan *component.Component)
 
-			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
 			Ω(manager.IsStarted()).Should(BeTrue())
 			cancel()
 			time.Sleep(1 * time.Second)
@@ -68,11 +70,11 @@ var _ = Describe("Health Manager", func() {
 			config.LogLevel = "fatal"
 			manager := health.NewManager(ctx, config)
 
-			mesuresCh := make(chan *health.TargetMeasurement)
-			healthCh := make(chan *target.Health)
-			targetCh := make(chan *target.Target)
+			mesuresCh := make(chan *health.ComponentMeasurement)
+			healthCh := make(chan *component.Health)
+			componentCh := make(chan *component.Component)
 
-			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
 			Ω(manager.IsStarted()).Should(BeTrue())
 			manager.Shutdown()
 			Ω(manager.IsStarted()).Should(BeFalse())
@@ -80,6 +82,31 @@ var _ = Describe("Health Manager", func() {
 	})
 
 	Context("dynamic registration off", func() {
+		verifyTargetHealth := func(expStatus component.HealthStatus, heartbeat, beats bool) {
+			targetHealth := <-healthCh
+			Ω(targetHealth).ShouldNot(BeNil())
+			Ω(targetHealth.ComponentID).Should(Equal(utils.DefaultHealthTarget))
+
+			switch expStatus {
+			case component.Healthy:
+				Ω(targetHealth.Status).Should(Equal(component.Healthy))
+				Ω(len(targetHealth.Messages)).Should(Equal(0))
+			case component.Degrade:
+				Ω(targetHealth.Status).Should(Equal(component.Degrade))
+				Ω(len(targetHealth.Messages)).Should(Equal(1))
+				Ω(targetHealth.Messages[0].HealthStatus).Should(Equal(component.Degrade))
+				Ω(targetHealth.Messages[0].Summary).Should(Equal(fmt.Sprintf("%s degraded", testComponentID)))
+			case component.Unhealthy:
+				Ω(targetHealth.Status).Should(Equal(component.Unhealthy))
+				Ω(len(targetHealth.Messages)).Should(Equal(1))
+				Ω(targetHealth.Messages[0].HealthStatus).Should(Equal(component.Unhealthy))
+				Ω(targetHealth.Messages[0].Summary).Should(Equal(fmt.Sprintf("%s unhealthy", testComponentID)))
+			}
+
+			Ω(targetHealth.Heartbeat.Enabled).Should(Equal(heartbeat))
+			Ω(targetHealth.Heartbeat.Beats).Should(Equal(beats))
+		}
+
 		BeforeEach(func() {
 			ctx = context.Background()
 
@@ -89,15 +116,16 @@ var _ = Describe("Health Manager", func() {
 			config.LogLevel = "fatal"
 			manager = health.NewManager(ctx, config)
 
-			mesuresCh = make(chan *health.TargetMeasurement)
-			healthCh = make(chan *target.Health)
-			targetCh = make(chan *target.Target)
+			mesuresCh = make(chan *health.ComponentMeasurement)
+			healthCh = make(chan *component.Health)
+			componentCh = make(chan *component.Component)
 		})
 
 		AfterEach(func() {
 			controller := make(chan struct{})
 			go func() {
-				<-healthCh
+				<-healthCh // component health
+				<-healthCh // general (target) health
 				close(controller)
 			}()
 			close(mesuresCh)
@@ -105,32 +133,47 @@ var _ = Describe("Health Manager", func() {
 			<-controller
 		})
 
-		Context("adding targets", func() {
+		Context("adding components", func() {
 			It("should add taret and push it on start", func() {
 				controller := make(chan struct{})
 				go func() {
-					actualTarget := <-targetCh
-					Ω(actualTarget).ShouldNot(BeNil())
-					Ω(actualTarget.ID).Should(Equal(testTargetID))
+					c1 := <-componentCh
+					Ω(c1).ShouldNot(BeNil())
+					c2 := <-componentCh
+					Ω(c2).ShouldNot(BeNil())
+
+					if actualComponent := c1; actualComponent.ID == testComponentID {
+						targetComponent := c2
+						Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
+					} else {
+						actualComponent, targetComponent := c2, c1
+						Ω(actualComponent.ID).Should(Equal(testComponentID))
+						Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
+					}
 					close(controller)
 				}()
-				addTestTarget()
+				addTestComponent(utils.DefaultHealthTarget)
 
-				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
 				<-controller
 			})
 
-			It("should push taret on add target even if started", func() {
-				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			It("should push taret on add component even if started", func() {
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
 
 				controller := make(chan struct{})
 				go func() {
-					actualTarget := <-targetCh
-					Ω(actualTarget).ShouldNot(BeNil())
-					Ω(actualTarget.ID).Should(Equal(testTargetID))
+					actualComponent := <-componentCh
+					Ω(actualComponent).ShouldNot(BeNil())
+					Ω(actualComponent.ID).Should(Equal(testComponentID))
+
+					targetComponent := <-componentCh
+					Ω(targetComponent).ShouldNot(BeNil())
+					Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
+
 					close(controller)
 				}()
-				addTestTarget()
+				addTestComponent(utils.DefaultHealthTarget)
 				<-controller
 			})
 		})
@@ -139,33 +182,40 @@ var _ = Describe("Health Manager", func() {
 			BeforeEach(func() {
 				controller := make(chan struct{})
 				go func() {
-					testTarget := <-targetCh
-					Ω(testTarget.ID).Should(Equal(testTargetID))
+					testComponent := <-componentCh
+					Ω(testComponent.ID).Should(Equal(testComponentID))
+
+					targetComponent := <-componentCh
+					Ω(targetComponent).ShouldNot(BeNil())
+					Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
+
 					close(controller)
 				}()
-				addTestTarget()
-				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
+				addTestComponent(utils.DefaultHealthTarget)
 				<-controller
 			})
 
-			It("should update targets heartbeat", func() {
-				heartbeatMeasure := &health.TargetMeasurement{
-					TargetID:    testTargetID,
+			It("should update components heartbeat", func() {
+				heartbeatMeasure := &health.ComponentMeasurement{
+					ComponentID: testComponentID,
 					MeasureType: health.Heartbeat,
 				}
 				mesuresCh <- heartbeatMeasure
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Heartbeat.Beats).Should(BeTrue())
 				Ω(actualHealth.Heartbeat.Enabled).Should(BeTrue())
+
+				verifyTargetHealth(component.Healthy, true, true)
 			})
 
 			It("should update simple counter twice and cleanup it for the next time", func() {
 				counterValue := int32(2)
-				counterMeasure := &health.TargetMeasurement{
-					TargetID:      testTargetID,
+				counterMeasure := &health.ComponentMeasurement{
+					ComponentID:   testComponentID,
 					MeasureID:     testCounter,
 					MeasureType:   health.CounterChange,
 					CounterChange: counterValue,
@@ -175,17 +225,22 @@ var _ = Describe("Health Manager", func() {
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Counters[testCounter]).Should(Equal(counterValue * 2))
 
+				verifyTargetHealth(component.Healthy, true, false)
+
 				actualHealth = <-healthCh
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 
 			It("should update total counter twice and don't cleanup after", func() {
 				counterValue := int32(2)
-				counterMeasure := &health.TargetMeasurement{
-					TargetID:      testTargetID,
+				counterMeasure := &health.ComponentMeasurement{
+					ComponentID:   testComponentID,
 					MeasureID:     testTotalCounter,
 					MeasureType:   health.CounterChange,
 					CounterChange: counterValue,
@@ -195,25 +250,29 @@ var _ = Describe("Health Manager", func() {
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(counterValue * 2))
+
+				verifyTargetHealth(component.Healthy, true, false)
 
 				actualHealth = <-healthCh
 				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(counterValue * 2))
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 
 			It("should calculate metric value and cleanup after the cycle", func() {
 				metricValue1 := float64(2)
 				metricValue2 := float64(6.4)
-				metricMeasure := &health.TargetMeasurement{
-					TargetID:    testTargetID,
+				metricMeasure := &health.ComponentMeasurement{
+					ComponentID: testComponentID,
 					MeasureID:   testMetric,
 					MeasureType: health.Metric,
 					MetricValue: metricValue1,
 				}
 				mesuresCh <- metricMeasure
-				metricMeasure = &health.TargetMeasurement{
-					TargetID:    testTargetID,
+				metricMeasure = &health.ComponentMeasurement{
+					ComponentID: testComponentID,
 					MeasureID:   testMetric,
 					MeasureType: health.Metric,
 					MetricValue: metricValue2,
@@ -222,86 +281,100 @@ var _ = Describe("Health Manager", func() {
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Metrics[testMetric]).Should(Equal((metricValue1 + metricValue2) / 2))
+
+				verifyTargetHealth(component.Healthy, true, false)
 
 				actualHealth = <-healthCh
 				Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 
 			It("should forward message that affects health and cleanup after the cycle", func() {
 				summary := "mock"
-				msg := &health.TargetMeasurement{
-					TargetID:    testTargetID,
+				msg := &health.ComponentMeasurement{
+					ComponentID: testComponentID,
 					MeasureType: health.Message,
-					Message: &target.Message{
+					Message: &component.Message{
 						Summary:      summary,
 						AffectHealth: true,
-						HealthStatus: target.Unhealthy,
+						HealthStatus: component.Unhealthy,
 					},
 				}
 				mesuresCh <- msg
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
-				Ω(actualHealth.Status).Should(Equal(target.Unhealthy))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
+				Ω(actualHealth.Status).Should(Equal(component.Unhealthy))
 				actualMsg := actualHealth.Messages[0]
-				Ω(actualMsg.HealthStatus).Should(Equal(target.Unhealthy))
+				Ω(actualMsg.HealthStatus).Should(Equal(component.Unhealthy))
 				Ω(actualMsg.Summary).Should(Equal(summary))
+
+				verifyTargetHealth(component.Unhealthy, true, false)
 
 				actualHealth = <-healthCh
 				Ω(len(actualHealth.Messages)).Should(Equal(0))
-				Ω(actualHealth.Status).Should(Equal(target.Unhealthy))
+				Ω(actualHealth.Status).Should(Equal(component.Unhealthy))
+
+				verifyTargetHealth(component.Unhealthy, true, false)
 			})
 
 			It("should forward message that don't affect health", func() {
 				summary := "mock"
-				msg := &health.TargetMeasurement{
-					TargetID:    testTargetID,
+				msg := &health.ComponentMeasurement{
+					ComponentID: testComponentID,
 					MeasureType: health.Message,
-					Message: &target.Message{
+					Message: &component.Message{
 						Summary:      summary,
 						AffectHealth: false,
-						HealthStatus: target.Unhealthy,
+						HealthStatus: component.Unhealthy,
 					},
 				}
 				mesuresCh <- msg
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
-				Ω(actualHealth.Status).Should(Equal(target.Healthy))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
+				Ω(actualHealth.Status).Should(Equal(component.Healthy))
 				Ω(actualHealth.Messages[0].Summary).Should(Equal(summary))
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 
 			It("should change health status if it is called manually and shouldn't cleanup after", func() {
-				hStatus := &health.TargetMeasurement{
-					TargetID:     testTargetID,
+				hStatus := &health.ComponentMeasurement{
+					ComponentID:  testComponentID,
 					MeasureType:  health.HealthStatus,
-					HealthStatus: target.Degrade,
+					HealthStatus: component.Degrade,
 				}
 				mesuresCh <- hStatus
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
-				Ω(actualHealth.Status).Should(Equal(target.Degrade))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
+				Ω(actualHealth.Status).Should(Equal(component.Degrade))
+
+				verifyTargetHealth(component.Degrade, true, false)
 
 				actualHealth = <-healthCh
-				Ω(actualHealth.Status).Should(Equal(target.Degrade))
+				Ω(actualHealth.Status).Should(Equal(component.Degrade))
+
+				verifyTargetHealth(component.Degrade, true, false)
 			})
 		})
 
-		Context("missing target or its component", func() {
+		Context("missing component or its component", func() {
 			BeforeEach(func() {
-				manager.Start(ctx, mesuresCh, healthCh, targetCh)
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
 			})
 
 			It("the first push shouldn't affect anything", func() {
 				counterValue := int32(2)
-				counterMeasure := &health.TargetMeasurement{
-					TargetID:      testTargetID,
+				counterMeasure := &health.ComponentMeasurement{
+					ComponentID:   testComponentID,
 					MeasureType:   health.CounterChange,
 					MeasureID:     testTotalCounter,
 					CounterChange: counterValue,
@@ -310,30 +383,42 @@ var _ = Describe("Health Manager", func() {
 				time.Sleep(200 * time.Microsecond)
 
 				go func() {
-					testTarget := <-targetCh
-					Ω(testTarget.ID).Should(Equal(testTargetID))
+					testComponent := <-componentCh
+					Ω(testComponent).ShouldNot(BeNil())
+					Ω(testComponent.ID).Should(Equal(testComponentID))
+
+					targetComponent := <-componentCh
+					Ω(targetComponent).ShouldNot(BeNil())
+					Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
 				}()
-				addTestTarget()
+				addTestComponent(utils.DefaultHealthTarget)
 
 				mesuresCh <- counterMeasure
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(counterValue))
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 
 			It("the counter with unregistered id shouldn't affect anything", func() {
 				go func() {
-					testTarget := <-targetCh
-					Ω(testTarget.ID).Should(Equal(testTargetID))
+					testComponent := <-componentCh
+					Ω(testComponent).ShouldNot(BeNil())
+					Ω(testComponent.ID).Should(Equal(testComponentID))
+
+					targetComponent := <-componentCh
+					Ω(targetComponent).ShouldNot(BeNil())
+					Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
 				}()
-				addTestTarget()
+				addTestComponent(utils.DefaultHealthTarget)
 				fakeID := "fakerID"
 
 				counterValue := int32(2)
-				counterMeasure := &health.TargetMeasurement{
-					TargetID:      testTargetID,
+				counterMeasure := &health.ComponentMeasurement{
+					ComponentID:   testComponentID,
 					MeasureType:   health.CounterChange,
 					MeasureID:     fakeID,
 					CounterChange: counterValue,
@@ -342,23 +427,30 @@ var _ = Describe("Health Manager", func() {
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Counters[testTotalCounter]).Should(Equal(int32(0)))
 				_, ok := actualHealth.Counters[fakeID]
 				Ω(ok).Should(BeFalse())
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 
 			It("the metric with unregistered id shouldn't affect anything", func() {
 				go func() {
-					testTarget := <-targetCh
-					Ω(testTarget.ID).Should(Equal(testTargetID))
+					testComponent := <-componentCh
+					Ω(testComponent).ShouldNot(BeNil())
+					Ω(testComponent.ID).Should(Equal(testComponentID))
+
+					targetComponent := <-componentCh
+					Ω(targetComponent).ShouldNot(BeNil())
+					Ω(targetComponent.ID).Should(Equal(utils.DefaultHealthTarget))
 				}()
-				addTestTarget()
+				addTestComponent(utils.DefaultHealthTarget)
 				fakeID := "fakerID"
 
 				counterValue := float64(2)
-				counterMeasure := &health.TargetMeasurement{
-					TargetID:    testTargetID,
+				counterMeasure := &health.ComponentMeasurement{
+					ComponentID: testComponentID,
 					MeasureType: health.Metric,
 					MeasureID:   fakeID,
 					MetricValue: counterValue,
@@ -367,10 +459,12 @@ var _ = Describe("Health Manager", func() {
 
 				actualHealth := <-healthCh
 				Ω(actualHealth).ShouldNot(BeNil())
-				Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+				Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 				Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
 				_, ok := actualHealth.Metrics[fakeID]
 				Ω(ok).Should(BeFalse())
+
+				verifyTargetHealth(component.Healthy, true, false)
 			})
 		})
 	})
@@ -386,11 +480,11 @@ var _ = Describe("Health Manager", func() {
 			config.LogLevel = "fatal"
 			manager = health.NewManager(ctx, config)
 
-			mesuresCh = make(chan *health.TargetMeasurement)
-			healthCh = make(chan *target.Health)
-			targetCh = make(chan *target.Target)
+			mesuresCh = make(chan *health.ComponentMeasurement)
+			healthCh = make(chan *component.Health)
+			componentCh = make(chan *component.Component)
 
-			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
 		})
 
 		AfterEach(func() {
@@ -401,24 +495,24 @@ var _ = Describe("Health Manager", func() {
 			manager.Shutdown()
 		})
 
-		It("should add the target dynamicaly by heartbeat", func() {
-			heartbeatMeasure := &health.TargetMeasurement{
-				TargetID:    testTargetID,
+		It("should add the component dynamicaly by heartbeat", func() {
+			heartbeatMeasure := &health.ComponentMeasurement{
+				ComponentID: testComponentID,
 				MeasureType: health.Heartbeat,
 			}
 			mesuresCh <- heartbeatMeasure
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Heartbeat.Beats).Should(BeTrue())
 			Ω(actualHealth.Heartbeat.Enabled).Should(BeTrue())
 		})
 
-		It("should add the target dynamicaly by metric", func() {
+		It("should add the component dynamicaly by metric", func() {
 			metricValue := float64(6.4)
-			metricMeasure := &health.TargetMeasurement{
-				TargetID:    testTargetID,
+			metricMeasure := &health.ComponentMeasurement{
+				ComponentID: testComponentID,
 				MeasureID:   testMetric,
 				MeasureType: health.Metric,
 				MetricValue: metricValue,
@@ -427,14 +521,14 @@ var _ = Describe("Health Manager", func() {
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Metrics[testMetric]).Should(Equal(metricValue))
 		})
 
-		It("should add the target dynamicaly by counter", func() {
+		It("should add the component dynamicaly by counter", func() {
 			counterValue := int32(2)
-			counterMeasure := &health.TargetMeasurement{
-				TargetID:      testTargetID,
+			counterMeasure := &health.ComponentMeasurement{
+				ComponentID:   testComponentID,
 				MeasureID:     testCounter,
 				MeasureType:   health.CounterChange,
 				CounterChange: counterValue,
@@ -443,19 +537,19 @@ var _ = Describe("Health Manager", func() {
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Counters[testCounter]).Should(Equal(counterValue))
 		})
 
-		It("shouldn't add the counter if id is not unique per target", func() {
+		It("shouldn't add the counter if id is not unique per component", func() {
 			go func() {
-				testTarget := <-targetCh
-				Ω(testTarget.ID).Should(Equal(testTargetID))
+				testComponent := <-componentCh
+				Ω(testComponent.ID).Should(Equal(testComponentID))
 			}()
-			addTestTarget()
+			addTestComponent("")
 			counterValue := int32(2)
-			counterMeasure := &health.TargetMeasurement{
-				TargetID:      testTargetID,
+			counterMeasure := &health.ComponentMeasurement{
+				ComponentID:   testComponentID,
 				MeasureID:     testMetric, // here we use metric id but its already taken
 				MeasureType:   health.CounterChange,
 				CounterChange: counterValue,
@@ -464,21 +558,21 @@ var _ = Describe("Health Manager", func() {
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Counters[testMetric]).Should(Equal(int32(0)))
 			Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
 		})
 
-		It("should add the counter if id is unique per target", func() {
+		It("should add the counter if id is unique per component", func() {
 			newMeasureID := "mocked.id"
 			go func() {
-				testTarget := <-targetCh
-				Ω(testTarget.ID).Should(Equal(testTargetID))
+				testComponent := <-componentCh
+				Ω(testComponent.ID).Should(Equal(testComponentID))
 			}()
-			addTestTarget()
+			addTestComponent("")
 			counterValue := int32(3)
-			counterMeasure := &health.TargetMeasurement{
-				TargetID:      testTargetID,
+			counterMeasure := &health.ComponentMeasurement{
+				ComponentID:   testComponentID,
 				MeasureID:     newMeasureID,
 				MeasureType:   health.CounterChange,
 				CounterChange: counterValue,
@@ -487,20 +581,20 @@ var _ = Describe("Health Manager", func() {
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
 			Ω(actualHealth.Counters[newMeasureID]).Should(Equal(counterValue))
 		})
 
-		It("shouldn't add the metric if id is not unique per target", func() {
+		It("shouldn't add the metric if id is not unique per component", func() {
 			go func() {
-				testTarget := <-targetCh
-				Ω(testTarget.ID).Should(Equal(testTargetID))
+				testComponent := <-componentCh
+				Ω(testComponent.ID).Should(Equal(testComponentID))
 			}()
-			addTestTarget()
+			addTestComponent("")
 			metricValue := float64(2)
-			metricMeasure := &health.TargetMeasurement{
-				TargetID:    testTargetID,
+			metricMeasure := &health.ComponentMeasurement{
+				ComponentID: testComponentID,
 				MeasureID:   testCounter, // here we use counter id but its already taken
 				MeasureType: health.Metric,
 				MetricValue: metricValue,
@@ -509,21 +603,21 @@ var _ = Describe("Health Manager", func() {
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Metrics[testCounter]).Should(Equal(float64(0)))
 			Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
 		})
 
-		It("should add the metric if id is unique per target", func() {
+		It("should add the metric if id is unique per component", func() {
 			newMeasureID := "mocked.id"
 			go func() {
-				testTarget := <-targetCh
-				Ω(testTarget.ID).Should(Equal(testTargetID))
+				testComponent := <-componentCh
+				Ω(testComponent.ID).Should(Equal(testComponentID))
 			}()
-			addTestTarget()
+			addTestComponent("")
 			metricValue := float64(2.3)
-			metricMeasure := &health.TargetMeasurement{
-				TargetID:    testTargetID,
+			metricMeasure := &health.ComponentMeasurement{
+				ComponentID: testComponentID,
 				MeasureID:   newMeasureID,
 				MeasureType: health.Metric,
 				MetricValue: metricValue,
@@ -532,7 +626,7 @@ var _ = Describe("Health Manager", func() {
 
 			actualHealth := <-healthCh
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(testTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
 			Ω(actualHealth.Metrics[newMeasureID]).Should(Equal(metricValue))
 		})
@@ -540,8 +634,8 @@ var _ = Describe("Health Manager", func() {
 
 	Context("dynamic config update", func() {
 		var (
-			unknownTargetID = "unknown.target"
-			unknownMetric   = "unknown.metric"
+			unknownComponentID = "unknown.component"
+			unknownMetric      = "unknown.metric"
 
 			hbCancel context.CancelFunc
 			err      error
@@ -556,15 +650,15 @@ var _ = Describe("Health Manager", func() {
 			config.LogLevel = "fatal"
 			manager = health.NewManager(ctx, config)
 
-			mesuresCh = make(chan *health.TargetMeasurement)
-			healthCh = make(chan *target.Health)
-			targetCh = make(chan *target.Target)
-			manager.Start(ctx, mesuresCh, healthCh, targetCh)
+			mesuresCh = make(chan *health.ComponentMeasurement)
+			healthCh = make(chan *component.Health)
+			componentCh = make(chan *component.Component)
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
 
 			collector := health.NewCollector(config.CollectionCycle, mesuresCh)
 			health.SetCollectorSingleton(collector)
 
-			hbCancel, err = collector.HeartBeat(unknownTargetID)
+			hbCancel, err = collector.HeartBeat(unknownComponentID)
 			Ω(err).ShouldNot(HaveOccurred())
 		})
 
@@ -601,10 +695,10 @@ var _ = Describe("Health Manager", func() {
 			Ω(err.Error()).Should(ContainSubstring("collector is not running"))
 		})
 
-		It("should not send health data for unregistered target first", func() {
+		It("should not send health data for unregistered component first", func() {
 			metricValue := float64(2)
-			counterMeasure := &health.TargetMeasurement{
-				TargetID:    unknownTargetID,
+			counterMeasure := &health.ComponentMeasurement{
+				ComponentID: unknownComponentID,
 				MeasureType: health.Metric,
 				MeasureID:   unknownMetric,
 				MetricValue: metricValue,
@@ -621,7 +715,7 @@ var _ = Describe("Health Manager", func() {
 			}).Should(BeFalse())
 		})
 
-		It("should add the target dynamically by metric after config update", func() {
+		It("should add the component dynamically by metric after config update", func() {
 			newCfg := health.NewConfig()
 			newCfg.CollectionCycle = 400 * time.Millisecond
 			newCfg.RegistrationOnCollect = true
@@ -630,8 +724,8 @@ var _ = Describe("Health Manager", func() {
 			Ω(err).ShouldNot(HaveOccurred())
 
 			metricValue := float64(6.4)
-			metricMeasure := &health.TargetMeasurement{
-				TargetID:    unknownTargetID,
+			metricMeasure := &health.ComponentMeasurement{
+				ComponentID: unknownComponentID,
 				MeasureType: health.Metric,
 				MeasureID:   unknownMetric,
 				MetricValue: metricValue,
@@ -646,8 +740,268 @@ var _ = Describe("Health Manager", func() {
 			}()
 
 			Ω(actualHealth).ShouldNot(BeNil())
-			Ω(actualHealth.TargetID).Should(Equal(unknownTargetID))
+			Ω(actualHealth.ComponentID).Should(Equal(unknownComponentID))
 			Ω(actualHealth.Metrics[unknownMetric]).Should(Equal(metricValue))
+		})
+	})
+
+	Context("hierarchical components impact", func() {
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			config := health.NewConfig()
+			config.CollectionCycle = 1000 * time.Millisecond
+			config.LogLevel = "fatal"
+			manager = health.NewManager(ctx, config)
+
+			mesuresCh = make(chan *health.ComponentMeasurement)
+			healthCh = make(chan *component.Health)
+			componentCh = make(chan *component.Component)
+		})
+
+		AfterEach(func() {
+			controller := make(chan struct{})
+			go func() {
+				for range 8 {
+					<-healthCh
+				}
+				close(controller)
+			}()
+			close(mesuresCh)
+			manager.Shutdown()
+			<-controller
+		})
+
+		It("should produce correct health results for targets from lower level components impact", func() {
+			//                target.high -> (U+HB)
+			//                ^         ^
+			//          (D+HB)^      (U)^
+			//                ^         ^
+			//      target.mid0         target.mid1
+			//        ^     ^           ^     ^    ^
+			//  (H+HB)^  (D)^        (H)^  (U)^    ^(H)
+			//        ^     ^           ^     ^    ^
+			//       low0  low1        low2  low3  low4
+			//
+
+			mid0, _ := component.New(
+				"target.mid0", "mid", "target.high", true,
+				nil, []string{testCounter}, nil,
+			)
+			mid1, _ := component.New(
+				"target.mid1", "mid", "target.high", false,
+				nil, nil, nil,
+			)
+
+			low0, _ := component.New(
+				"low0", "low", mid0.ID, true,
+				nil, nil, nil,
+			)
+			low1, _ := component.New(
+				"low1", "low", mid0.ID, false,
+				nil, nil, nil,
+			)
+			low2, _ := component.New(
+				"low2", "low", mid1.ID, false,
+				[]string{testMetric}, nil, nil,
+			)
+			low3, _ := component.New(
+				"low3", "low", mid1.ID, false,
+				nil, nil, nil,
+			)
+			low4, _ := component.New(
+				"low4", "low", mid1.ID, false,
+				nil, []string{testCounter}, nil,
+			)
+
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
+			controller := make(chan struct{})
+			go func() {
+				m0 := <-componentCh
+				Ω(m0).ShouldNot(BeNil())
+				Ω(m0.ID).Should(Equal(mid0.ID))
+
+				m1 := <-componentCh
+				Ω(m1).ShouldNot(BeNil())
+				Ω(m1.ID).Should(Equal(mid1.ID))
+
+				l0 := <-componentCh
+				Ω(l0).ShouldNot(BeNil())
+				Ω(l0.ID).Should(Equal(low0.ID))
+
+				l1 := <-componentCh
+				Ω(l1).ShouldNot(BeNil())
+				Ω(l1.ID).Should(Equal(low1.ID))
+
+				l2 := <-componentCh
+				Ω(l2).ShouldNot(BeNil())
+				Ω(l2.ID).Should(Equal(low2.ID))
+
+				l3 := <-componentCh
+				Ω(l3).ShouldNot(BeNil())
+				Ω(l3.ID).Should(Equal(low3.ID))
+
+				l4 := <-componentCh
+				Ω(l4).ShouldNot(BeNil())
+				Ω(l4.ID).Should(Equal(low4.ID))
+
+				h := <-componentCh
+				Ω(h).ShouldNot(BeNil())
+				Ω(h.ID).Should(Equal("target.high"))
+
+				close(controller)
+			}()
+			components := []*component.Component{mid0, mid1, low0, low1, low2, low3, low4}
+			manager.AddComponents(components)
+			<-controller
+
+			// low0
+			heartbeatMeasure := &health.ComponentMeasurement{
+				ComponentID: low0.ID,
+				MeasureType: health.Heartbeat,
+			}
+			mesuresCh <- heartbeatMeasure
+
+			// low1
+			hStatus := &health.ComponentMeasurement{
+				ComponentID:  low1.ID,
+				MeasureType:  health.HealthStatus,
+				HealthStatus: component.Degrade,
+			}
+			mesuresCh <- hStatus
+
+			// low2
+			low2metricValue := float64(6.4)
+			metricMeasure := &health.ComponentMeasurement{
+				ComponentID: low2.ID,
+				MeasureID:   testMetric,
+				MeasureType: health.Metric,
+				MetricValue: low2metricValue,
+			}
+			mesuresCh <- metricMeasure
+
+			// low3
+			msg := &health.ComponentMeasurement{
+				ComponentID: low3.ID,
+				MeasureType: health.Message,
+				Message: &component.Message{
+					Summary:      "custom message low3",
+					AffectHealth: true,
+					HealthStatus: component.Unhealthy,
+				},
+			}
+			mesuresCh <- msg
+
+			// low4
+			low4counterValue := int32(1)
+			counterMeasure := &health.ComponentMeasurement{
+				ComponentID:   low4.ID,
+				MeasureID:     testCounter,
+				MeasureType:   health.CounterChange,
+				CounterChange: low4counterValue,
+			}
+			mesuresCh <- counterMeasure
+
+			// target.mid0
+			mid0counterValue := int32(2)
+			counterMeasure = &health.ComponentMeasurement{
+				ComponentID:   mid0.ID,
+				MeasureID:     testCounter,
+				MeasureType:   health.CounterChange,
+				CounterChange: mid0counterValue,
+			}
+			mesuresCh <- counterMeasure
+
+			// target.mid1
+			msg = &health.ComponentMeasurement{
+				ComponentID: mid1.ID,
+				MeasureType: health.Message,
+				Message: &component.Message{
+					Summary:      "custom message mid1",
+					HealthStatus: component.Healthy,
+				},
+			}
+			mesuresCh <- msg
+
+			lowComponentsHealth := map[string]*component.Health{}
+			for range 5 {
+				h := <-healthCh
+				lowComponentsHealth[h.ComponentID] = h
+			}
+
+			targetComponentsHealth := map[string]*component.Health{}
+			for range 3 {
+				h := <-healthCh
+				targetComponentsHealth[h.ComponentID] = h
+			}
+
+			Ω(lowComponentsHealth["low0"]).ShouldNot(BeNil())
+			Ω(lowComponentsHealth["low0"].Status).Should(Equal(component.Healthy))
+			Ω(lowComponentsHealth["low0"].Heartbeat.Enabled).Should(BeTrue())
+			Ω(lowComponentsHealth["low0"].Heartbeat.Beats).Should(BeTrue())
+
+			Ω(lowComponentsHealth["low1"]).ShouldNot(BeNil())
+			Ω(lowComponentsHealth["low1"].Status).Should(Equal(component.Degrade))
+
+			Ω(lowComponentsHealth["low2"]).ShouldNot(BeNil())
+			Ω(lowComponentsHealth["low2"].Status).Should(Equal(component.Healthy))
+			Ω(lowComponentsHealth["low2"].Metrics[testMetric]).Should(Equal(low2metricValue))
+
+			Ω(lowComponentsHealth["low3"]).ShouldNot(BeNil())
+			Ω(lowComponentsHealth["low3"].Status).Should(Equal(component.Unhealthy))
+			Ω(lowComponentsHealth["low3"].Messages).Should(ContainElement(&component.Message{
+				Summary:      "custom message low3",
+				AffectHealth: true,
+				HealthStatus: component.Unhealthy,
+			}))
+			Ω(len(lowComponentsHealth["low3"].Messages)).Should(Equal(1))
+
+			Ω(lowComponentsHealth["low4"]).ShouldNot(BeNil())
+			Ω(lowComponentsHealth["low4"].Status).Should(Equal(component.Healthy))
+			Ω(lowComponentsHealth["low4"].Counters[testCounter]).Should(Equal(low4counterValue))
+
+			Ω(targetComponentsHealth["target.mid0"]).ShouldNot(BeNil())
+			Ω(targetComponentsHealth["target.mid0"].Status).Should(Equal(component.Degrade))
+			Ω(targetComponentsHealth["target.mid0"].Heartbeat.Enabled).Should(BeTrue())
+			Ω(targetComponentsHealth["target.mid0"].Heartbeat.Beats).Should(BeTrue())
+			Ω(targetComponentsHealth["target.mid0"].Counters[testCounter]).Should(Equal(mid0counterValue))
+			Ω(targetComponentsHealth["target.mid0"].Messages).Should(ContainElement(&component.Message{
+				Summary:      "low1 degraded",
+				AffectHealth: true,
+				HealthStatus: component.Degrade,
+			}))
+			Ω(len(targetComponentsHealth["target.mid0"].Messages)).Should(Equal(1))
+
+			Ω(targetComponentsHealth["target.mid1"]).ShouldNot(BeNil())
+			Ω(targetComponentsHealth["target.mid1"].Status).Should(Equal(component.Unhealthy))
+			Ω(targetComponentsHealth["target.mid1"].Heartbeat.Enabled).Should(BeFalse())
+			Ω(targetComponentsHealth["target.mid1"].Heartbeat.Beats).Should(BeFalse())
+			Ω(targetComponentsHealth["target.mid1"].Messages).Should(ContainElement(&component.Message{
+				Summary:      "custom message mid1",
+				HealthStatus: component.Healthy,
+			}))
+			Ω(targetComponentsHealth["target.mid1"].Messages).Should(ContainElement(&component.Message{
+				Summary:      "low3 unhealthy",
+				AffectHealth: true,
+				HealthStatus: component.Unhealthy,
+			}))
+			Ω(len(targetComponentsHealth["target.mid1"].Messages)).Should(Equal(2))
+
+			Ω(targetComponentsHealth["target.high"]).ShouldNot(BeNil())
+			Ω(targetComponentsHealth["target.high"].Status).Should(Equal(component.Unhealthy))
+			Ω(targetComponentsHealth["target.high"].Heartbeat.Enabled).Should(BeTrue())
+			Ω(targetComponentsHealth["target.high"].Heartbeat.Beats).Should(BeTrue())
+			Ω(targetComponentsHealth["target.high"].Messages).Should(ContainElement(&component.Message{
+				Summary:      "target.mid0 degraded",
+				AffectHealth: true,
+				HealthStatus: component.Degrade,
+			}))
+			Ω(targetComponentsHealth["target.high"].Messages).Should(ContainElement(&component.Message{
+				Summary:      "target.mid1 unhealthy",
+				AffectHealth: true,
+				HealthStatus: component.Unhealthy,
+			}))
+			Ω(len(targetComponentsHealth["target.high"].Messages)).Should(Equal(2))
 		})
 	})
 })

@@ -1,8 +1,20 @@
 # Health Monitoring Framework
 
-Main purpose of the package is to provide a framework that gives you an ability to collect and send health data and metrics for configured targets.
+Main purpose of the package is to provide a framework that gives you an ability to collect and send health data and metrics for configured components and targets.
 
-Target can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the target can be simply in two states: healty or unhealthy and the health monitoring framework provides you an ability to mark your target as healthy or unhealthy in different cases. Additionaly we provide an ability to collect health related metrics. You can collect whatever you wants. For example you can collect error rate and if it is constatly hight it can also say something about target health. Abilities to collect heartbeat or error messages also in place.
+Component can be anything. Basically it is some part of your program or maybe a whole program that you can logically separate. Health of the component can be in three states: healthy, degraded or unhealthy and the health monitoring framework provides you an ability to mark your component appropriately in different cases. Additionally, we provide an ability to collect health related metrics. You can collect whatever you want. For example, you can collect error rate and if it is constantly high it can also say something about component health. Abilities to collect heartbeat or error messages also in place.
+
+Target component has the same capabilities as a regular component. The difference is that its health status is determined through the impact of other components rather than directly.
+Thus, components can be organized in a hierarchical structure to separate more general logical elements and their constituent parts.
+Relationships are set when each component is defined, by specifying the Target it will affect (or not specifying if it is the highest level component or lives on its own).
+If the referenced Target component is not explicitly defined, it will be created automatically. In that case, its basic properties will be general health status and heartbeat (if at least one component that impacts it has enabled heartbeat).
+
+Currently, the health status of the Target is calculated as follows:
+* Target is `Healthy` if all of its components have status `Healthy`.
+* Target is `Degrade` if one or less than half of the components have status `Degrade`.
+* Target is `Unhealthy` if at least one component has status `Unhealthy` or half or more of the components have status `Degrade`.
+* Target receives messages indicating specific non-healthy components and their statuses.
+* Target has a heartbeat if at least one of its components has a heartbeat.
 
 ## How to use
 
@@ -11,16 +23,16 @@ At the start of your program you need to configure and initialize health manager
 
 ### Configuration
 
-You need to provide values for health manager [config](#config) and define [targets](#target) with all metrics and their types that you want to collect in future. 
+You need to provide values for health manager [config](#config) and define [components](#component) with all metrics and their types that you want to collect in future. 
 
 ```go
 // define health monitoring configuration
 config := health.NewConfig()
 config.CollectionCycle = 60 * time.Second
 
-// define your targets
-firstTarget, err := target.New(
-    firstTargetID, true,
+// define your components
+firstComponent, err := component.New(
+    componentID, componentType, targetComponenID, true,
     []string{someMetricID},
     []string{someCounterID},
     []string{someTotalCounterID},
@@ -28,15 +40,15 @@ firstTarget, err := target.New(
 if err != nil {
     // handle error here
 }
-targets := []*target.Target{
-    firstTarget,
+components := []*component.Component{
+    firstComponent,
 }
 ```
 
 ### Initializtion
 
 You need to init a couple of important structs here and start health manager.
-At this point you should create your [destination](#destination), [writer](#writer) and [manager](#manager). After it you can add your targets to the manager and start it.
+At this point you should create your [destination](#destination), [writer](#writer) and [manager](#manager). After it you can add your components to the manager and start it.
 
 ```go
 // Define writer and its destination
@@ -46,8 +58,8 @@ writer := writer.New([]writer.Destination{logDestination})
 // init health manager
 manager := health.NewManager(ctx, config)
 
-// add configured targets
-manager.AddTargets(targets)
+// add configured components
+manager.AddComponents(components)
 
 // start health monitoring
 // after this you are safe to call collector in any part of your program
@@ -56,7 +68,7 @@ health.FrameworkStart(ctx, config, manager, writer)
 
 ### Collection
 
-After you done with inititalization you can call collector in any part of your program and collect any health data that you want. You can even send a [message](#message) per target.
+After you done with inititalization you can call collector in any part of your program and collect any health data that you want. You can even send a [message](#message) per component.
 
 ```go
 collector, err := health.GetCollectorSingleton()
@@ -65,26 +77,26 @@ if err != nil {
 }
 
 // you can collect heartbeat data within configured collection cycle
-hbCancel, err := collector.HeartBeat(firstTargetID)
+hbCancel, err := collector.HeartBeat(firstComponentID)
 if err != nil {
     // handle an error here
 }
 defer hbCancel()
 // you can store any float data as a metric info
-collector.AddMetricValue(firstTargetID, someMetricID, 35.4)
+collector.AddMetricValue(firstComponentID, someMetricID, 35.4)
 // you can store counter data per cycle (like number of some method executions)
-collector.AddToCounter(firstTargetID, someCounterID, 3)
+collector.AddToCounter(firstComponentID, someCounterID, 3)
 // or store total counter data (like number of running goroutines)
-collector.AddToCounter(firstTargetID, someTotalCounterID, 1)
-collector.AddToCounter(firstTargetID, someTotalCounterID, -1)
-// you can even send error messages per target
-msg := target.NewMessage(
+collector.AddToCounter(firstComponentID, someTotalCounterID, 1)
+collector.AddToCounter(firstComponentID, someTotalCounterID, -1)
+// you can even send error messages per component
+msg := component.NewMessage(
     "Some kind of title for your message",
     err,
     true)
-collector.HealthMessage(firstTargetID, msg)
-// also you have a control over target health status
-collector.ChangeHealth(firstTargetID, false)
+collector.HealthMessage(firstComponentID, msg)
+// also you have a control over component health status
+collector.ChangeHealth(firstComponentID, false)
 ```
 
 ## Demo
@@ -100,30 +112,29 @@ Here is a list of all public structs and interfaces, how you can use them and wh
 Config keeps configuration for whole framework instance. Right now we have these avialable config parameters:
 
 * CollectionCycle - how often we should calculate and flush data to a writer. 30 seconds by default.
-* RegistrationOnCollect - whether to allow data collection for unregistered targets. Manager will register such targets automatically. Not recommended to use, it is better to explicitly define all targets. Note: in this case you cannot specify counter as a total counter.
+* RegistrationOnCollect - whether to allow data collection for unregistered components. Manager will register such components automatically. Not recommended to use, it is better to explicitly define all components. Note: in this case you cannot specify counter as a total counter.
 * LogLevel - log level will be applied to zerolog logger during manager.Start call. Available values: trace, debug, info, warn, error, fatal, panic
 
-Note: right now we don't have an ability to update Configuration after you passed it as a parameter to manager constructor.
+### Component
 
-### Target
+Provided by health/component package. Component object keeps data about all its metrics and some additional per component configs.
 
-Provided by health/target package. Target object keeps data about all its metrics and some additional per target configs.
-
-Target data:
+Component data:
 * ID
-* Type - just a string. Should help to categorize your targets and can be used to help define target priority in future. You can pass empty string, "default" value will be used then.
+* Type - just a string. Should help to categorize your components and can be used to help define component priority in future. You can pass empty string, "default" value will be used then.
+* TargetID - ID of another (impacted) component
 * MetricIDs - list of float metric IDs (calculate avg value for each metric every cycle)
 * CounterIDs - list of counter IDs (resets to 0 every cycle)
 * TotalCounterIDs - list of total counter IDs (will not be reset every cycle)
 
-Target config:
-* EnableHeartbeat - whether to enable heartbeat data for this target. If false we will not take care about heartbeat data.
+Component config:
+* EnableHeartbeat - whether to enable heartbeat data for this component. If false we will not take care about heartbeat data.
 
 ### Destination
 
-Destination object should implement Destination interface (lives in health/writer package). It should have two methods: Register and Push. Register takes [health target](#target) when you add it and makes all required work to prepare destination for future data. Push takes [health object](#target-health) and sends it to the place you want. We have these available destinations:
+Destination object should implement Destination interface (lives in health/writer package). It should have two methods: Register and Push. Register takes [health component](#component) when you add it and makes all required work to prepare destination for future data. Push takes [health object](#component-health) and sends it to the place you want. We have these available destinations:
 * LogDestination - it will simply output your health data as a log message on info level.
-* ZCDestination - it allows you to push health data directly to the ZING under your tenant. It will push target data as a model and health data as metrics (right now only counters and metrics work). To start use ZCDestination you also need to prepare ZCDestinationConfig. Example how it looks like:
+* ZCDestination - it allows you to push health data directly to the ZING under your tenant. It will push component data as a model and health data as metrics (right now only counters and metrics work). To start use ZCDestination you also need to prepare ZCDestinationConfig. Example how it looks like:
 ```go
 config := &writer.ZCDestinationConfig{
     EndpointConfig: &endpoint.Config{
@@ -146,27 +157,28 @@ config := &writer.ZCDestinationConfig{
 
 Writer is responsible for two things:
 - listening of calculated health data and sending it using destination.Push method.
-- listening of registered targets and sending it using destination.Register method.
-You should provided intitalized destination as a parameter in writer constructor (function New). Writer interface requires only one method: Start. This method takes channels with target.Health and target.Target objects as a parameters and is responsible to listen it.
+- listening of registered components and sending it using destination.Register method.
+You should provided intitalized destination as a parameter in writer constructor (function New). Writer interface requires only one method: Start. This method takes channels with component.Health and component.Component objects as a parameters and is responsible to listen it.
 
 ### Manager
 
-Manager is a heart of our framework. During Start call it starts to listend for all comunication channels: Collector->Manager->Writer. Manager has target registry and is responsible to calculate all collected health data once per cycle and send it to writer.
+Manager is a heart of our framework. During Start call it starts to listend for all comunication channels: Collector->Manager->Writer. Manager has component registry and is responsible to calculate all collected health data once per cycle and send it to writer.
 Manager also keeps FrameworkStart function. You should use it as a started for health framework. It initializes communication channels and collector and starts writer and manager.
 
 ### Message
 
-Message struct lives in health/target package. It has these fields:
-* Summary - should describe shortly what happened with your target.
+Message struct lives in health/component package. It has these fields:
+* Summary - should describe shortly what happened with your component.
 * Error - if the error is a reason to create a message you can add it here to provide additional context.
-* AffectHealth - whether you want this message to affect your target health status and mark it as unhealthy.
+* AffectHealth - whether you want this message to affect your component health status and mark it as unhealthy.
 
-### Target Health
+### Component Health
 
-Lives in health/targer package. It is a final look of target's health data. Right now it has such fields:
+Lives in health/component package. It is a final look of component's health data. Right now it has such fields:
+* ComponentID
+* ComponentType
 * TargetID
-* TargetType
-* Healthy - health status of the target
+* Healthy - health status of the component
 * Heartbeat - object with two values: Enabled, Beats. Enabled shows you whether you described that you want to collect heartbeat info. Beats will be true if we received heartbeat info during last cycle.
 * Counters - map of all (default and total) counters with their values
 * Metrics - map of all metrics with their values

@@ -14,9 +14,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/mocks"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 )
@@ -47,11 +47,11 @@ var _ = Describe("Writer", func() {
 		dests = []writer.Destination{logDest, mockDest}
 
 		pushErr := "Unable to push health message"
-		regErr := "Unable to register health target"
-		mockDest.On("Push", ctx, mock.AnythingOfType("*target.Health")).Return(
+		regErr := "Unable to register health component"
+		mockDest.On("Push", ctx, mock.AnythingOfType("*component.Health")).Return(
 			errors.New(pushErr),
 		)
-		mockDest.On("Register", ctx, mock.AnythingOfType("*target.Target")).Return(
+		mockDest.On("Register", ctx, mock.AnythingOfType("*component.Component")).Return(
 			errors.New(regErr),
 		)
 	})
@@ -69,31 +69,31 @@ var _ = Describe("Writer", func() {
 		})
 
 		It("should start and die with shutdown", func() {
-			hCh := make(chan *target.Health)
-			tCh := make(chan *target.Target)
+			hCh := make(chan *component.Health)
+			tCh := make(chan *component.Component)
 			go healthWriter.Start(ctx, hCh, tCh)
 			healthWriter.Shutdown()
 		})
 
-		It("should log Health and Target info. Mocked destination shouldn't affect writer", func() {
-			targetID := "testTarget"
+		It("should log Health and Component info. Mocked destination shouldn't affect writer", func() {
+			componentID := "testComponent"
 			empty := []string{}
-			hTarget, _ := target.New(
-				targetID, utils.DefaultTargetType, false,
+			hComponent, _ := component.New(
+				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
 				empty, empty, empty,
 			)
-			h := target.NewHealth(targetID, utils.DefaultTargetType)
+			h := component.NewHealth(componentID, utils.DefaultComponentType, utils.DefaultHealthTarget)
 
 			var wg sync.WaitGroup
-			hCh := make(chan *target.Health)
-			tCh := make(chan *target.Target)
+			hCh := make(chan *component.Health)
+			tCh := make(chan *component.Component)
 
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				healthWriter.Start(ctx, hCh, tCh)
 			}()
-			tCh <- hTarget
+			tCh <- hComponent
 			hCh <- h
 			time.Sleep(1 * time.Second)
 			close(hCh)
@@ -101,8 +101,9 @@ var _ = Describe("Writer", func() {
 			wg.Wait()
 			out := buf.String()
 
-			Ω(out).Should(ContainSubstring(fmt.Sprintf("TargetID: %s, Status=Healthy", targetID)))
-			Ω(out).Should(ContainSubstring(fmt.Sprintf("Got target update TargetID: %s", targetID)))
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("ComponentID: %s", componentID)))
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("Status=Healthy")))
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("Got component update ComponentID: %s", componentID)))
 		})
 	})
 })

@@ -1,15 +1,16 @@
-package target
+package component
 
 import "github.com/zenoss/zenoss-go-sdk/health/utils"
 
-// NewHealth initializes a new Health object with target ID
-func NewHealth(id, tType string) *Health {
-	if tType == "" {
-		tType = utils.DefaultTargetType
+// NewHealth initializes a new Health object with component ID and target ID
+func NewHealth(id, cType, targetID string) *Health {
+	if cType == "" {
+		cType = utils.DefaultComponentType
 	}
 	return &Health{
-		TargetID:   id,
-		TargetType: tType,
+		ComponentID:   id,
+		ComponentType: cType,
+		TargetID:      targetID,
 
 		Status:    Healthy,
 		Heartbeat: &HeartBeat{},
@@ -37,8 +38,9 @@ func (hs HealthStatus) String() string {
 
 // Health is a ready to send object that keeps all calculated health data during last cycle
 type Health struct {
-	TargetID   string
-	TargetType string
+	ComponentID   string
+	ComponentType string
+	TargetID      string
 
 	Status    HealthStatus
 	Heartbeat *HeartBeat
@@ -47,7 +49,7 @@ type Health struct {
 	Messages  []*Message
 }
 
-// HeartBeat is a wrapper that keeps whether heartbeat was enabled for current target and
+// HeartBeat is a wrapper that keeps whether heartbeat was enabled for current component and
 // whether we received a heartbeat data during last cycle
 type HeartBeat struct {
 	Enabled, Beats bool

@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/zenoss/zenoss-go-sdk/health"
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 	"github.com/zenoss/zenoss-go-sdk/health/log"
-	"github.com/zenoss/zenoss-go-sdk/health/target"
 	"github.com/zenoss/zenoss-go-sdk/health/writer"
 )
 
 const (
-	mercedesTarget = "mercedes.citaro"
-	bogdanTarget   = "bogdan.A091"
+	busRouteTarget = "NYC.M23.route"
+
+	mercedesComponent = "mercedes.citaro"
+	bogdanComponent   = "bogdan.A091"
 
 	speedMetricID       = "speed"
 	stationsCounterID   = "stations"
@@ -28,9 +30,9 @@ func main() {
 	config := health.NewConfig()
 	config.CollectionCycle = 2 * time.Second
 
-	// define monitored targets
-	busTarget, err := target.New(
-		mercedesTarget, "", true,
+	// define monitored components
+	busComponent, err := component.New(
+		mercedesComponent, "", busRouteTarget, true,
 		[]string{speedMetricID},
 		[]string{stationsCounterID},
 		[]string{passengersCounterID},
@@ -38,8 +40,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	targets := []*target.Target{
-		busTarget,
+	components := []*component.Component{
+		busComponent,
 	}
 
 	// Define writer and its destination
@@ -48,7 +50,7 @@ func main() {
 
 	// init health manager
 	manager := health.NewManager(ctx, config)
-	manager.AddTargets(targets)
+	manager.AddComponents(components)
 
 	// start health monitoring framework
 	// after this you are safe to call collector in any part of your program
@@ -75,58 +77,58 @@ func bus(manager health.Manager, wg *sync.WaitGroup) {
 	}
 	sleeps := 2 * time.Second
 
-	hbCancel, err := collector.HeartBeat(mercedesTarget)
+	hbCancel, err := collector.HeartBeat(mercedesComponent)
 	if err != nil {
 		panic(err)
 	}
 	defer hbCancel()
 
 	// just started
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 0)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 0)
 
 	time.Sleep(sleeps)
 	log.Info().Msg("Bus is keep moving")
 
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 35.4)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 35.4)
 
 	time.Sleep(sleeps)
 	log.Info().Msg("Need to stop on the station")
 
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 0)
-	collector.AddToCounter(mercedesTarget, stationsCounterID, 1)
-	collector.AddToCounter(mercedesTarget, passengersCounterID, 8)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 0)
+	collector.AddToCounter(mercedesComponent, stationsCounterID, 1)
+	collector.AddToCounter(mercedesComponent, passengersCounterID, 8)
 
 	time.Sleep(sleeps)
 	log.Info().Msg("And we move again")
 
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 8.9)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 8.9)
 
 	time.Sleep(sleeps)
 	log.Info().Msg("OH no. Somethign happened")
 
-	msg := target.NewMessage(
+	msg := component.NewMessage(
 		"The engine stalled",
 		errors.New("engine stopped working"),
-		true, target.Unhealthy)
-	collector.HealthMessage(mercedesTarget, msg)
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 0)
+		true, component.Unhealthy)
+	collector.HealthMessage(mercedesComponent, msg)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 0)
 
 	time.Sleep(sleeps)
 	log.Info().Msg("Two passengers where not patient and left")
 
-	collector.AddToCounter(mercedesTarget, passengersCounterID, -2)
+	collector.AddToCounter(mercedesComponent, passengersCounterID, -2)
 
 	time.Sleep(sleeps)
 	log.Info().Msg("Congrats, we repaired an engine, we can mark as healthy again")
 
-	collector.ChangeHealth(mercedesTarget, target.Healthy)
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 5.0)
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 25.0)
+	collector.ChangeHealth(mercedesComponent, component.Healthy)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 5.0)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 25.0)
 
 	time.Sleep(sleeps / 2)
 
 	log.Info().Msg("An unregistered vehicle appears at a crossroads")
-	collector.AddMetricValue(bogdanTarget, speedMetricID, 2)
+	collector.AddMetricValue(bogdanComponent, speedMetricID, 2)
 	time.Sleep(sleeps / 2)
 
 	log.Info().Msg("Updating the config to monitor it")
@@ -137,12 +139,12 @@ func bus(manager health.Manager, wg *sync.WaitGroup) {
 	sleeps = 4 * time.Second
 	time.Sleep(sleeps / 2)
 
-	collector.AddMetricValue(bogdanTarget, speedMetricID, 4.0)
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 5.0)
+	collector.AddMetricValue(bogdanComponent, speedMetricID, 4.0)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 5.0)
 	time.Sleep(sleeps)
 
-	collector.AddMetricValue(bogdanTarget, speedMetricID, 7.0)
-	collector.AddMetricValue(mercedesTarget, speedMetricID, 11.0)
+	collector.AddMetricValue(bogdanComponent, speedMetricID, 7.0)
+	collector.AddMetricValue(mercedesComponent, speedMetricID, 11.0)
 	time.Sleep(sleeps)
 	log.Info().Msg("Buses keep moving but we don't need to monitor them anymore")
 }
