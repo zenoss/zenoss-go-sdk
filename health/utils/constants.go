@@ -5,6 +5,8 @@ const (
 	DefaultSourceType = "zenoss.collection.health"
 	DefaultTargetType = "default"
 
+	HeartBeatMetricName = "health.heartbeat"
+
 	TargetKey     = "target"
 	TargetTypeKey = "target-type"
 	SourceKey     = "source"
