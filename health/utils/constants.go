@@ -6,6 +6,8 @@ const (
 	DefaultComponentType = "default"
 	DefaultHealthTarget  = "general"
 
+	HeartBeatMetricName = "health.heartbeat"
+
 	ComponentKey     = "component"
 	ComponentTypeKey = "component-type"
 	TargetKey        = "target"

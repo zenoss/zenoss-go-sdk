@@ -120,6 +120,14 @@ func (d *ZCDestination) buildCanonicalMetrics(health *component.Health) []*zpb.M
 		))
 	}
 
+	if health.Heartbeat.Enabled {
+		value := float64(0)
+		if health.Heartbeat.Beats {
+			value = 1
+		}
+		metrics = append(metrics, d.buildMetric(health.TargetID, utils.HeartBeatMetricName, value))
+	}
+
 	return metrics
 }
 
