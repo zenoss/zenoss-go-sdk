@@ -69,7 +69,7 @@ func (d *ZCDestination) Register(ctx context.Context, component *component.Compo
 	model := &zpb.Model{}
 	model.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
 	model.Dimensions = d.buildComponentDimensions(component.ID)
-	model.MetadataFields = d.buildComponentMetadata()
+	model.MetadataFields = d.buildComponentMetadata(component.Type, component.TargetID)
 	model.MetadataFields.Fields[utils.ZenossNameField] = sdk_utils.StrToStructValue(component.ID)
 
 	result, err := d.Endpoint.PutModels(ctx, &zpb.Models{Models: []*zpb.Model{model}})
@@ -110,26 +110,27 @@ func (d *ZCDestination) buildCanonicalMetrics(health *component.Health) []*zpb.M
 	metrics := make([]*zpb.Metric, 0)
 	for mID, mValue := range health.Metrics {
 		metrics = append(metrics, d.buildMetric(
-			health.ComponentID, mID, mValue,
+			health.ComponentID, health.ComponentType, health.TargetID, mID, mValue,
 		))
 	}
 
 	for cID, cValue := range health.Counters {
 		metrics = append(metrics, d.buildMetric(
-			health.ComponentID, cID, float64(cValue),
+			health.ComponentID, health.ComponentType, health.TargetID, cID, float64(cValue),
 		))
 	}
 
 	return metrics
 }
 
-func (d *ZCDestination) buildMetric(componentID, metricID string, value float64) *zpb.Metric {
+//revive:disable:argument-limit
+func (d *ZCDestination) buildMetric(componentID, componentType, targetID, metricID string, value float64) *zpb.Metric {
 	metric := &zpb.Metric{}
 	metric.Timestamp = time.Now().UnixNano() / int64(time.Millisecond)
 	metric.Metric = metricID
 	metric.Value = value
 	metric.Dimensions = d.buildComponentDimensions(componentID)
-	metric.MetadataFields = d.buildComponentMetadata()
+	metric.MetadataFields = d.buildComponentMetadata(componentType, targetID)
 	return metric
 }
 
@@ -145,11 +146,13 @@ func (d *ZCDestination) buildComponentDimensions(componentID string) map[string]
 	return dims
 }
 
-func (d *ZCDestination) buildComponentMetadata() *structpb.Struct {
+func (d *ZCDestination) buildComponentMetadata(componentType, targetID string) *structpb.Struct {
 	metadata := make(map[string]*structpb.Value)
 	for key, value := range d.Config.Metadata {
 		metadata[key] = sdk_utils.StrToStructValue(value)
 	}
+	metadata[utils.ComponentTypeKey] = sdk_utils.StrToStructValue(componentType)
+	metadata[utils.TargetKey] = sdk_utils.StrToStructValue(targetID)
 	return &structpb.Struct{Fields: metadata}
 }
 

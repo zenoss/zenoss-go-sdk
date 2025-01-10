@@ -77,7 +77,6 @@ func FrameworkStart(ctx context.Context, cfg *Config, m Manager, writer w.Health
 
 		StopCollectorSingleton()
 		m.Shutdown()
-		close(measurementsCh)
 		writer.Shutdown()
 		doneWg.Wait()
 	}
@@ -549,9 +548,9 @@ func (hm *healthManager) buildAndPushHealthForTarget(
 		}
 	}
 
-	currentTargetInfo.ownHealth.Status = hm.calculateTargetHealthStatus(currentTargetInfo)
+	hm.resolveTargetHealthStatus(currentTargetInfo)
+	hm.resolveTargetHeartbeat(currentTargetInfo)
 	currentTargetInfo.ownHealth.Messages = append(currentTargetInfo.ownHealth.Messages, currentTargetInfo.impactMsgs...)
-	currentTargetInfo.ownHealth.Heartbeat = currentTargetInfo.impactHB
 	healthIn <- currentTargetInfo.ownHealth
 	return currentTargetInfo.ownHealth
 }
@@ -587,17 +586,28 @@ func (hm *healthManager) updateImpactedTargetInfo(targetInfo *targetInfo, impact
 	}
 }
 
-func (*healthManager) calculateTargetHealthStatus(tInfo *targetInfo) component.HealthStatus {
-	ratio := float64(tInfo.degradedCount+tInfo.unhealthyCount) / float64(tInfo.impactsCount)
+func (*healthManager) resolveTargetHealthStatus(target *targetInfo) {
+	ratio := float64(target.degradedCount+target.unhealthyCount) / float64(target.impactsCount)
 	switch {
-	case tInfo.unhealthyCount >= 1 || (tInfo.impactsCount > 2 && ratio >= 0.5):
+	case target.unhealthyCount >= 1 || (target.impactsCount > 2 && ratio >= 0.5):
 		// at least one component is unhealthy or half or more are degraded -> target is unhealthy
-		return component.Unhealthy
+		target.ownHealth.Status = component.Unhealthy
 	case ratio > 0:
 		// one or less than half of the components are degraded -> target is degraded
-		return component.Degrade
+		target.ownHealth.Status = component.Degrade
 	default:
-		return component.Healthy
+		target.ownHealth.Status = component.Healthy
+	}
+}
+
+func (*healthManager) resolveTargetHeartbeat(target *targetInfo) {
+	if target.impactHB == nil {
+		target.impactHB = &component.HeartBeat{}
+	}
+
+	target.ownHealth.Heartbeat = &component.HeartBeat{
+		Enabled: target.ownHealth.Heartbeat.Enabled || target.impactHB.Enabled,
+		Beats:   target.ownHealth.Heartbeat.Beats || target.impactHB.Beats,
 	}
 }
 

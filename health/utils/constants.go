@@ -8,6 +8,7 @@ const (
 
 	ComponentKey     = "component"
 	ComponentTypeKey = "component-type"
+	TargetKey        = "target"
 	SourceKey        = "source"
 	SourceTypeKey    = "source-type"
 

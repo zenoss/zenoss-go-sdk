@@ -46,8 +46,8 @@ var _ = Describe("Destination", func() {
 				summaryMessage, errors.New("err"), true, component.Unhealthy,
 			)}
 			expectedMsg := fmt.Sprintf(
-				"ComponentID: %s, Status=Healthy, Counters=map[], Metrics=map[], Messages=[%s]",
-				componentID, summaryMessage)
+				"ComponentID: %s, TargetID: %s, Status=Healthy, Counters=map[], Metrics=map[], Messages=[%s]",
+				componentID, "", summaryMessage)
 
 			err := logDest.Push(ctx, health)
 			var output map[string]interface{}
@@ -64,8 +64,8 @@ var _ = Describe("Destination", func() {
 				Beats:   true,
 			}
 			expectedMsg := fmt.Sprintf(
-				"ComponentID: %s, Status=Healthy, Heartbeat=true, Counters=map[], Metrics=map[], Messages=[]",
-				componentID)
+				"ComponentID: %s, TargetID: %s, Status=Healthy, Heartbeat=true, Counters=map[], Metrics=map[], Messages=[]",
+				componentID, "")
 
 			err := logDest.Push(ctx, health)
 			var output map[string]interface{}

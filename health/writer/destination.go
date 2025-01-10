@@ -41,8 +41,8 @@ func (l *LogDestination) Register(_ context.Context, component *component.Compon
 
 func (l *LogDestination) logComponentInfo(component *component.Component) {
 	l.log.Info().Msgf("Got component update "+
-		"ComponentID: %s, Heartbeat Enabled: %t, CounterIDs=%v, TotalCounterIDs=%v MetricIDs=%v",
-		component.ID, component.EnableHeartbeat,
+		"ComponentID: %s, TargetID: %s, Heartbeat Enabled: %t, CounterIDs=%v, TotalCounterIDs=%v MetricIDs=%v",
+		component.ID, component.TargetID, component.EnableHeartbeat,
 		component.CounterIDs, component.TotalCounterIDs, component.MetricIDs,
 	)
 }
@@ -55,14 +55,14 @@ func (l *LogDestination) logComponentHealth(health *component.Health) {
 
 	if health.Heartbeat.Enabled {
 		l.log.Info().Msgf(
-			"ComponentID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
-			health.ComponentID, health.Status, health.Heartbeat.Beats, health.Counters,
+			"ComponentID: %s, TargetID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
+			health.ComponentID, health.TargetID, health.Status, health.Heartbeat.Beats, health.Counters,
 			health.Metrics, messageSums,
 		)
 	} else {
 		l.log.Info().Msgf(
-			"ComponentID: %s, Status=%v, Counters=%v, Metrics=%v, Messages=%v",
-			health.ComponentID, health.Status, health.Counters, health.Metrics, messageSums,
+			"ComponentID: %s, TargetID: %s, Status=%v, Counters=%v, Metrics=%v, Messages=%v",
+			health.ComponentID, health.TargetID, health.Status, health.Counters, health.Metrics, messageSums,
 		)
 	}
 }

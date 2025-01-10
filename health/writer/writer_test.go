@@ -101,7 +101,8 @@ var _ = Describe("Writer", func() {
 			wg.Wait()
 			out := buf.String()
 
-			Ω(out).Should(ContainSubstring(fmt.Sprintf("ComponentID: %s, Status=Healthy", componentID)))
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("ComponentID: %s", componentID)))
+			Ω(out).Should(ContainSubstring(fmt.Sprintf("Status=Healthy")))
 			Ω(out).Should(ContainSubstring(fmt.Sprintf("Got component update ComponentID: %s", componentID)))
 		})
 	})
