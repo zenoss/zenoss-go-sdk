@@ -33,7 +33,7 @@ func main() {
 	// define monitored components
 	busComponent, err := component.New(
 		mercedesComponent, "", busRouteTarget, true,
-		[]string{speedMetricID},
+		map[string]component.Aggregator{speedMetricID: component.DefaultAggregator},
 		[]string{stationsCounterID},
 		[]string{passengersCounterID},
 	)

@@ -80,7 +80,7 @@ var _ = Describe("Writer", func() {
 			empty := []string{}
 			hComponent, _ := component.New(
 				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
-				empty, empty, empty,
+				map[string]component.Aggregator{}, empty, empty,
 			)
 			h := component.NewHealth(componentID, utils.DefaultComponentType, utils.DefaultHealthTarget)
 

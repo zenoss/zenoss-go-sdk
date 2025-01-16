@@ -114,7 +114,7 @@ var _ = Describe("Destination", func() {
 			empty := []string{}
 			component, err := component.New(
 				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
-				empty, empty, empty,
+				map[string]component.Aggregator{}, empty, empty,
 			)
 			Ω(err).Should(BeNil())
 
@@ -136,7 +136,7 @@ var _ = Describe("Destination", func() {
 			empty := []string{}
 			component, err := component.New(
 				componentID, utils.DefaultComponentType, utils.DefaultHealthTarget, false,
-				empty, empty, empty,
+				map[string]component.Aggregator{}, empty, empty,
 			)
 			Ω(err).Should(BeNil())
 
