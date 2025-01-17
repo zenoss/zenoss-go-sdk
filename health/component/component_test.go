@@ -1,6 +1,7 @@
 package component_test
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,11 +28,23 @@ var _ = Describe("Component Tests", func() {
 			counterIDs = []string{"someCounter"}
 			tCounterIDs = []string{"totalCounter", mockStr}
 		})
+
 		It("should return an error if measure is not unique", func() {
 			metricIDs = append(metricIDs, mockStr)
 			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
 			Ω(component).Should(BeNil())
 			Ω(err).Should(Equal(utils.ErrMeasureIDTaken))
+		})
+
+		It("should return an error if measures limit is exceeded", func() {
+			for i := 0; i < utils.ComponentMeasuresLimit/3+1; i++ {
+				metricIDs = append(metricIDs, fmt.Sprintf("metric-%d", i))
+				counterIDs = append(counterIDs, fmt.Sprintf("counter-%d", i))
+				tCounterIDs = append(tCounterIDs, fmt.Sprintf("totalCounter-%d", i))
+			}
+			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
+			Ω(component).Should(BeNil())
+			Ω(err).Should(Equal(utils.ErrComponentMeasuresLimitExceeded))
 		})
 
 		It("should return a new Component", func() {

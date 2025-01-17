@@ -100,7 +100,7 @@ type Manager interface {
 	// IsStarted return the status of the manager
 	IsStarted() bool
 	// AddComponents provides a simple interface to register monitored components
-	AddComponents(components []*component.Component)
+	AddComponents(components []*component.Component) error
 
 	Done() <-chan struct{}
 }
@@ -233,9 +233,20 @@ func (hm *healthManager) IsStarted() bool {
 	return hm.started.Load()
 }
 
-func (hm *healthManager) AddComponents(components []*component.Component) {
+func (hm *healthManager) AddComponents(components []*component.Component) error {
 	hm.registry.lock()
 	defer hm.registry.unlock()
+
+	uniqueComponents := make(map[string]struct{}, len(components))
+	for _, c := range components {
+		uniqueComponents[c.ID] = struct{}{}
+		if c.TargetID != "" {
+			uniqueComponents[c.TargetID] = struct{}{}
+		}
+	}
+	if len(uniqueComponents)+len(hm.registry.getRawHealthMap()) > utils.ComponentsLimit {
+		return utils.ErrComponentsLimitExceeded
+	}
 
 	for _, newComponent := range components {
 		hm.registry.setRawHealthForComponent(newRawHealth(newComponent))
@@ -259,6 +270,8 @@ func (hm *healthManager) AddComponents(components []*component.Component) {
 			}
 		}
 	}
+
+	return nil
 }
 
 func (hm *healthManager) updateTargetsRegistry(c *component.Component) {
@@ -325,6 +338,9 @@ func (hm *healthManager) updateComponentHealthData(measure *ComponentMeasurement
 		if !hm.registrationOnCollect() {
 			return utils.ErrComponentNotRegistered
 		}
+		if len(hm.registry.getRawHealthMap())+1 > utils.ComponentsLimit {
+			return utils.ErrComponentsLimitExceeded
+		}
 		componentHealth, err = hm.buildComponentFromMeasure(measure)
 		if err != nil {
 			return fmt.Errorf("unable to register component automatically: %w", err)
@@ -363,6 +379,9 @@ func (hm *healthManager) updateComponentsMetric(cHealth *rawHealth, measure *Com
 		if !hm.registrationOnCollect() {
 			return utils.ErrMetricNotRegistered
 		}
+		if cHealth.component.IsMeasuresLimitExceeded(1) {
+			return utils.ErrComponentMeasuresLimitExceeded
+		}
 		if !cHealth.component.IsMeasureIDUnique(measure.MeasureID) {
 			return utils.ErrMeasureIDTaken
 		}
@@ -384,6 +403,9 @@ func (hm *healthManager) updateComponentsCounter(cHealth *rawHealth, measure *Co
 		if !sdk_utils.ListContainsString(cHealth.component.CounterIDs, measure.MeasureID) {
 			if !hm.registrationOnCollect() {
 				return utils.ErrCounterNotRegistered
+			}
+			if cHealth.component.IsMeasuresLimitExceeded(1) {
+				return utils.ErrComponentMeasuresLimitExceeded
 			}
 			if !cHealth.component.IsMeasureIDUnique(measure.MeasureID) {
 				return utils.ErrMeasureIDTaken
