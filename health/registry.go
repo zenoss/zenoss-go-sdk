@@ -40,9 +40,11 @@ type healthRegistry interface {
 	unlock()
 	getRawHealthForComponent(componentID string) (*rawHealth, bool)
 	setRawHealthForComponent(rawComponentHealth *rawHealth)
+	removeRawHealthForComponent(componentID string)
 	getRawHealthMap() map[string]*rawHealth
 	checkTarget(componentID string) (registered bool, hbEnabled bool)
 	setTarget(componentID string, hbEnabled bool)
+	removeTarget(componentID string)
 	getTargetsMap() map[string]bool
 }
 
@@ -78,6 +80,10 @@ func (reg *memRegistry) setRawHealthForComponent(rawComponentHealth *rawHealth) 
 	reg.rawHealth[rawComponentHealth.component.ID] = rawComponentHealth
 }
 
+func (reg *memRegistry) removeRawHealthForComponent(componentID string) {
+	delete(reg.rawHealth, componentID)
+}
+
 func (reg *memRegistry) getRawHealthMap() map[string]*rawHealth {
 	return reg.rawHealth
 }
@@ -89,6 +95,10 @@ func (reg *memRegistry) checkTarget(componentID string) (registered bool, hbEnab
 
 func (reg *memRegistry) setTarget(componentID string, hbEnabled bool) {
 	reg.targetComponents[componentID] = hbEnabled
+}
+
+func (reg *memRegistry) removeTarget(componentID string) {
+	delete(reg.targetComponents, componentID)
 }
 
 func (reg *memRegistry) getTargetsMap() map[string]bool {

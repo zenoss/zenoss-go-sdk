@@ -191,6 +191,69 @@ var _ = Describe("Health Manager", Ordered, func() {
 			})
 		})
 
+		Context("deleting components", func() {
+			It("should delete specified components and affected target", func() {
+				var (
+					compToDeleteID0  = "component.to.delete-0"
+					compToDeleteID1  = "component.to.delete-1"
+					compToRetainID   = "component.to.retain"
+					targetToDeleteID = "target.component.to.delete"
+					targetToRetainID = "target.component.to.retain"
+
+					h *component.Health
+				)
+
+				initComponents := []*component.Component{
+					{
+						ID:       compToDeleteID0,
+						Type:     utils.DefaultComponentType,
+						TargetID: targetToDeleteID,
+					},
+					{
+						ID:       compToDeleteID1,
+						Type:     utils.DefaultComponentType,
+						TargetID: targetToRetainID,
+					},
+					{
+						ID:       compToRetainID,
+						Type:     utils.DefaultComponentType,
+						TargetID: targetToRetainID,
+					},
+				}
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
+				controller := make(chan struct{})
+				go func() {
+					for range 5 {
+						c := <-componentCh
+						Ω(c).ShouldNot(BeNil())
+					}
+					close(controller)
+				}()
+				err := manager.AddComponents(initComponents)
+				Ω(err).ShouldNot(HaveOccurred())
+				<-controller
+
+				uniqueComponentsHealth := make(map[string]*component.Health, 5)
+				for range 5 {
+					h = <-healthCh
+					Ω(h).ShouldNot(BeNil())
+					uniqueComponentsHealth[h.ComponentID] = h
+				}
+				Ω(len(uniqueComponentsHealth)).Should(Equal(5))
+
+				manager.DeleteComponents([]string{compToDeleteID0, compToDeleteID1})
+				uniqueComponentsHealth = make(map[string]*component.Health, 2)
+				for range 10 {
+					h = <-healthCh
+					Ω(h).ShouldNot(BeNil())
+					uniqueComponentsHealth[h.ComponentID] = h
+				}
+				Ω(len(uniqueComponentsHealth)).Should(Equal(2))
+				Ω(uniqueComponentsHealth[compToRetainID]).ShouldNot(BeNil())
+				Ω(uniqueComponentsHealth[targetToRetainID]).ShouldNot(BeNil())
+			})
+		})
+
 		Context("simple health measurements", func() {
 			BeforeEach(func() {
 				controller := make(chan struct{})

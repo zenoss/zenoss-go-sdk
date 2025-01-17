@@ -101,6 +101,8 @@ type Manager interface {
 	IsStarted() bool
 	// AddComponents provides a simple interface to register monitored components
 	AddComponents(components []*component.Component) error
+	// DeleteComponents removes components with the IDs provided from monitoring
+	DeleteComponents(componentIDs []string)
 
 	Done() <-chan struct{}
 }
@@ -272,6 +274,33 @@ func (hm *healthManager) AddComponents(components []*component.Component) error 
 	}
 
 	return nil
+}
+
+func (hm *healthManager) DeleteComponents(componentIDs []string) {
+	hm.registry.lock()
+	defer hm.registry.unlock()
+
+	targetsToRemove := map[string]struct{}{}
+	for _, cID := range componentIDs {
+		rHealth, ok := hm.registry.getRawHealthForComponent(cID)
+		if !ok {
+			continue
+		}
+		if targetID := rHealth.component.TargetID; targetID != "" {
+			targetsToRemove[targetID] = struct{}{}
+		}
+		hm.registry.removeRawHealthForComponent(cID)
+	}
+
+	for _, rHealth := range hm.registry.getRawHealthMap() {
+		// targets that have impacting components left should not be deleted
+		delete(targetsToRemove, rHealth.component.TargetID)
+	}
+
+	for tcID := range targetsToRemove {
+		hm.registry.removeRawHealthForComponent(tcID)
+		hm.registry.removeTarget(tcID)
+	}
 }
 
 func (hm *healthManager) updateTargetsRegistry(c *component.Component) {
