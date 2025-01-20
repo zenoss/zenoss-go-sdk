@@ -3,8 +3,9 @@
 package component
 
 import (
+	"slices"
+
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
-	sdk_utils "github.com/zenoss/zenoss-go-sdk/utils"
 )
 
 // New creates a new Component object
@@ -13,10 +14,10 @@ import (
 //
 //revive:disable:argument-limit
 func New(
-	id, cType, targetID string, enableHeartbeat bool, metricIDs, counterIDs, totalCounterIDs []string,
+	id, cType, targetID string, enableHeartbeat bool, metrics map[string]Aggregator, counterIDs, totalCounterIDs []string,
 ) (*Component, error) {
 	set := make(map[string]struct{})
-	for _, val := range metricIDs {
+	for val := range metrics {
 		set[val] = struct{}{}
 	}
 	for _, val := range counterIDs {
@@ -25,7 +26,7 @@ func New(
 	for _, val := range totalCounterIDs {
 		set[val] = struct{}{}
 	}
-	if len(set) < len(metricIDs)+len(counterIDs)+len(totalCounterIDs) {
+	if len(set) < len(metrics)+len(counterIDs)+len(totalCounterIDs) {
 		return nil, utils.ErrMeasureIDTaken
 	}
 	if len(set) > utils.ComponentMeasuresLimit {
@@ -39,7 +40,7 @@ func New(
 		Type:            cType,
 		TargetID:        targetID,
 		EnableHeartbeat: enableHeartbeat,
-		MetricIDs:       metricIDs,
+		Metrics:         metrics,
 		CounterIDs:      counterIDs,
 		TotalCounterIDs: totalCounterIDs,
 	}, nil
@@ -51,7 +52,7 @@ func New(
 // configuration (such as whether to enable heartbeat)
 type Component struct {
 	ID              string
-	MetricIDs       []string
+	Metrics         map[string]Aggregator
 	CounterIDs      []string
 	TotalCounterIDs []string
 
@@ -65,15 +66,28 @@ type Component struct {
 	EnableHeartbeat bool
 }
 
+type Aggregator int
+
+const (
+	AggregatorMean Aggregator = iota
+	AggregatorMin
+	AggregatorMax
+	AggregatorSum
+	AggregatorCount
+
+	DefaultAggregator = AggregatorMean
+)
+
 // IsMeasureIDUnique searches through all metric and counter IDs and
 // returns false if such ID is already taken
 func (c *Component) IsMeasureIDUnique(id string) bool {
-	return !(sdk_utils.ListContainsString(c.MetricIDs, id) ||
-		sdk_utils.ListContainsString(c.CounterIDs, id) ||
-		sdk_utils.ListContainsString(c.TotalCounterIDs, id))
+	_, metricOk := c.Metrics[id]
+	return !(metricOk ||
+		slices.Contains(c.CounterIDs, id) ||
+		slices.Contains(c.TotalCounterIDs, id))
 }
 
 func (c *Component) IsMeasuresLimitExceeded(newMeasures int) bool {
-	return len(c.MetricIDs)+len(c.CounterIDs)+len(c.TotalCounterIDs)+
+	return len(c.Metrics)+len(c.CounterIDs)+len(c.TotalCounterIDs)+
 		newMeasures > utils.ComponentMeasuresLimit
 }

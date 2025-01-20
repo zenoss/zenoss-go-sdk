@@ -15,6 +15,7 @@ package health
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -404,7 +405,7 @@ func (hm *healthManager) updateComponentHealthData(measure *ComponentMeasurement
 }
 
 func (hm *healthManager) updateComponentsMetric(cHealth *rawHealth, measure *ComponentMeasurement) error {
-	if !sdk_utils.ListContainsString(cHealth.component.MetricIDs, measure.MeasureID) {
+	if _, metricOk := cHealth.component.Metrics[measure.MeasureID]; !metricOk {
 		if !hm.registrationOnCollect() {
 			return utils.ErrMetricNotRegistered
 		}
@@ -414,11 +415,11 @@ func (hm *healthManager) updateComponentsMetric(cHealth *rawHealth, measure *Com
 		if !cHealth.component.IsMeasureIDUnique(measure.MeasureID) {
 			return utils.ErrMeasureIDTaken
 		}
-		cHealth.component.MetricIDs = append(cHealth.component.MetricIDs, measure.MeasureID)
-		cHealth.rawMetrics[measure.MeasureID] = []float64{measure.MetricValue}
+		cHealth.component.Metrics[measure.MeasureID] = component.DefaultAggregator
+		cHealth.metrics[measure.MeasureID] = &metric{values: []float64{measure.MetricValue}}
 	} else {
-		cHealth.rawMetrics[measure.MeasureID] = append(
-			cHealth.rawMetrics[measure.MeasureID],
+		cHealth.metrics[measure.MeasureID].values = append(
+			cHealth.metrics[measure.MeasureID].values,
 			measure.MetricValue,
 		)
 	}
@@ -426,10 +427,10 @@ func (hm *healthManager) updateComponentsMetric(cHealth *rawHealth, measure *Com
 }
 
 func (hm *healthManager) updateComponentsCounter(cHealth *rawHealth, measure *ComponentMeasurement) error {
-	if sdk_utils.ListContainsString(cHealth.component.TotalCounterIDs, measure.MeasureID) {
+	if slices.Contains(cHealth.component.TotalCounterIDs, measure.MeasureID) {
 		cHealth.totalCounters[measure.MeasureID] += measure.CounterChange
 	} else {
-		if !sdk_utils.ListContainsString(cHealth.component.CounterIDs, measure.MeasureID) {
+		if !slices.Contains(cHealth.component.CounterIDs, measure.MeasureID) {
 			if !hm.registrationOnCollect() {
 				return utils.ErrCounterNotRegistered
 			}
@@ -448,20 +449,20 @@ func (hm *healthManager) updateComponentsCounter(cHealth *rawHealth, measure *Co
 
 func (*healthManager) buildComponentFromMeasure(measure *ComponentMeasurement) (*rawHealth, error) {
 	var enableHeartbeat bool
-	metricIDs := make([]string, 0)
+	metrics := make(map[string]component.Aggregator)
 	counterIDs := make([]string, 0)
 	totalCounterIDs := make([]string, 0)
 	switch measure.MeasureType {
 	case Heartbeat:
 		enableHeartbeat = true
 	case Metric:
-		metricIDs = []string{measure.MeasureID}
+		metrics[measure.MeasureID] = component.DefaultAggregator
 	case CounterChange:
 		counterIDs = []string{measure.MeasureID}
 	}
 	component, err := component.New(
 		measure.ComponentID, utils.DefaultComponentType, "", enableHeartbeat,
-		metricIDs, counterIDs, totalCounterIDs,
+		metrics, counterIDs, totalCounterIDs,
 	)
 	if err != nil { // shouldn't ever happen here
 		return nil, err
@@ -560,13 +561,20 @@ func (*healthManager) calculateComponentHealth(rawHealth *rawHealth) *component.
 	for counterID, counter := range rawHealth.totalCounters {
 		health.Counters[counterID] = counter
 	}
-	for metricID, mValues := range rawHealth.rawMetrics {
-		if len(mValues) > 0 {
-			var sum float64
-			for _, value := range mValues {
-				sum += value
+	for metricID, m := range rawHealth.metrics {
+		if len(m.values) > 0 {
+			switch m.aggregator {
+			case component.AggregatorMean:
+				health.Metrics[metricID] = sdk_utils.Sum(m.values) / float64(len(m.values))
+			case component.AggregatorMin:
+				health.Metrics[metricID] = slices.Min(m.values)
+			case component.AggregatorMax:
+				health.Metrics[metricID] = slices.Max(m.values)
+			case component.AggregatorSum:
+				health.Metrics[metricID] = sdk_utils.Sum(m.values)
+			case component.AggregatorCount:
+				health.Metrics[metricID] = float64(len(m.values))
 			}
-			health.Metrics[metricID] = sum / float64(len(mValues))
 		}
 	}
 	return health
@@ -578,9 +586,9 @@ func (*healthManager) cleanHealthValues(rawHealth *rawHealth) {
 	for counterID := range rawHealth.counters {
 		rawHealth.counters[counterID] = 0
 	}
-	for metricID, mValues := range rawHealth.rawMetrics {
-		if len(mValues) > 0 {
-			rawHealth.rawMetrics[metricID] = []float64{}
+	for _, m := range rawHealth.metrics {
+		if len(m.values) > 0 {
+			m.values = []float64{}
 		}
 	}
 }
@@ -697,6 +705,6 @@ func debugRawHealthStats(rawHealth *rawHealth) {
 	log.Debug().Msgf(
 		"ComponentID: %s, Status=%v, Heartbeat=%t, Counters=%v, Metrics=%v, Messages=%v",
 		rawHealth.component.ID, rawHealth.status, rawHealth.heartBeat, rawHealth.counters,
-		rawHealth.rawMetrics, messageSums,
+		rawHealth.metrics, messageSums,
 	)
 }

@@ -22,33 +22,34 @@ var _ = Describe("Component Tests", func() {
 	)
 
 	Context("constructor", func() {
-		var metricIDs, counterIDs, tCounterIDs []string
+		var metrics map[string]component.Aggregator
+		var counterIDs, tCounterIDs []string
 		BeforeEach(func() {
-			metricIDs = []string{"someMetric"}
+			metrics = map[string]component.Aggregator{"someMetric": component.DefaultAggregator}
 			counterIDs = []string{"someCounter"}
 			tCounterIDs = []string{"totalCounter", mockStr}
 		})
 
 		It("should return an error if measure is not unique", func() {
-			metricIDs = append(metricIDs, mockStr)
-			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
+			metrics[mockStr] = component.DefaultAggregator
+			component, err := component.New(id, "", "", true, metrics, counterIDs, tCounterIDs)
 			Ω(component).Should(BeNil())
 			Ω(err).Should(Equal(utils.ErrMeasureIDTaken))
 		})
 
 		It("should return an error if measures limit is exceeded", func() {
 			for i := 0; i < utils.ComponentMeasuresLimit/3+1; i++ {
-				metricIDs = append(metricIDs, fmt.Sprintf("metric-%d", i))
+				metrics[fmt.Sprintf("metric-%d", i)] = component.DefaultAggregator
 				counterIDs = append(counterIDs, fmt.Sprintf("counter-%d", i))
 				tCounterIDs = append(tCounterIDs, fmt.Sprintf("totalCounter-%d", i))
 			}
-			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
+			component, err := component.New(id, "", "", true, metrics, counterIDs, tCounterIDs)
 			Ω(component).Should(BeNil())
 			Ω(err).Should(Equal(utils.ErrComponentMeasuresLimitExceeded))
 		})
 
 		It("should return a new Component", func() {
-			component, err := component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
+			component, err := component.New(id, "", "", true, metrics, counterIDs, tCounterIDs)
 			Ω(err).Should(BeNil())
 			Ω(component).ShouldNot(BeNil())
 		})
@@ -58,11 +59,11 @@ var _ = Describe("Component Tests", func() {
 		var testComponent *component.Component
 
 		BeforeEach(func() {
-			metricIDs := []string{"someMetric"}
+			metrics := map[string]component.Aggregator{"someMetric": component.DefaultAggregator}
 			counterIDs := []string{"someCounter"}
 			tCounterIDs := []string{"totalCounter"}
 
-			testComponent, _ = component.New(id, "", "", true, metricIDs, counterIDs, tCounterIDs)
+			testComponent, _ = component.New(id, "", "", true, metrics, counterIDs, tCounterIDs)
 		})
 
 		It("should return false if measure is not unique", func() {
