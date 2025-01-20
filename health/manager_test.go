@@ -134,6 +134,19 @@ var _ = Describe("Health Manager", Ordered, func() {
 		})
 
 		Context("adding components", func() {
+			It("should fail if components limit is exceeded", func() {
+				components := make([]*component.Component, utils.ComponentsLimit/2+1)
+				for i := 0; i < len(components); i++ {
+					components[i] = &component.Component{
+						ID:       fmt.Sprintf("component-%d", i),
+						TargetID: fmt.Sprintf("targetComponent-%d", i),
+					}
+				}
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
+				err := manager.AddComponents(components)
+				Ω(err).Should(Equal(utils.ErrComponentsLimitExceeded))
+			})
+
 			It("should add taret and push it on start", func() {
 				controller := make(chan struct{})
 				go func() {
@@ -158,7 +171,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 				<-controller
 			})
 
-			It("should push taret on add component even if started", func() {
+			It("should push component on add component even if started", func() {
 				manager.Start(ctx, mesuresCh, healthCh, componentCh)
 
 				controller := make(chan struct{})
@@ -175,6 +188,69 @@ var _ = Describe("Health Manager", Ordered, func() {
 				}()
 				addTestComponent(utils.DefaultHealthTarget)
 				<-controller
+			})
+		})
+
+		Context("deleting components", func() {
+			It("should delete specified components and affected target", func() {
+				var (
+					compToDeleteID0  = "component.to.delete-0"
+					compToDeleteID1  = "component.to.delete-1"
+					compToRetainID   = "component.to.retain"
+					targetToDeleteID = "target.component.to.delete"
+					targetToRetainID = "target.component.to.retain"
+
+					h *component.Health
+				)
+
+				initComponents := []*component.Component{
+					{
+						ID:       compToDeleteID0,
+						Type:     utils.DefaultComponentType,
+						TargetID: targetToDeleteID,
+					},
+					{
+						ID:       compToDeleteID1,
+						Type:     utils.DefaultComponentType,
+						TargetID: targetToRetainID,
+					},
+					{
+						ID:       compToRetainID,
+						Type:     utils.DefaultComponentType,
+						TargetID: targetToRetainID,
+					},
+				}
+				manager.Start(ctx, mesuresCh, healthCh, componentCh)
+				controller := make(chan struct{})
+				go func() {
+					for range 5 {
+						c := <-componentCh
+						Ω(c).ShouldNot(BeNil())
+					}
+					close(controller)
+				}()
+				err := manager.AddComponents(initComponents)
+				Ω(err).ShouldNot(HaveOccurred())
+				<-controller
+
+				uniqueComponentsHealth := make(map[string]*component.Health, 5)
+				for range 5 {
+					h = <-healthCh
+					Ω(h).ShouldNot(BeNil())
+					uniqueComponentsHealth[h.ComponentID] = h
+				}
+				Ω(len(uniqueComponentsHealth)).Should(Equal(5))
+
+				manager.DeleteComponents([]string{compToDeleteID0, compToDeleteID1})
+				uniqueComponentsHealth = make(map[string]*component.Health, 2)
+				for range 10 {
+					h = <-healthCh
+					Ω(h).ShouldNot(BeNil())
+					uniqueComponentsHealth[h.ComponentID] = h
+				}
+				Ω(len(uniqueComponentsHealth)).Should(Equal(2))
+				Ω(uniqueComponentsHealth[compToRetainID]).ShouldNot(BeNil())
+				Ω(uniqueComponentsHealth[targetToRetainID]).ShouldNot(BeNil())
 			})
 		})
 
@@ -366,7 +442,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			})
 		})
 
-		Context("missing component or its component", func() {
+		Context("missing component or its measure", func() {
 			BeforeEach(func() {
 				manager.Start(ctx, mesuresCh, healthCh, componentCh)
 			})
@@ -488,14 +564,16 @@ var _ = Describe("Health Manager", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			go func() {
-				<-healthCh
-			}()
-			close(mesuresCh)
-			manager.Shutdown()
+			if manager.IsStarted() {
+				go func() {
+					<-healthCh
+				}()
+				close(mesuresCh)
+				manager.Shutdown()
+			}
 		})
 
-		It("should add the component dynamicaly by heartbeat", func() {
+		It("should add the component dynamically by heartbeat", func() {
 			heartbeatMeasure := &health.ComponentMeasurement{
 				ComponentID: testComponentID,
 				MeasureType: health.Heartbeat,
@@ -509,7 +587,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			Ω(actualHealth.Heartbeat.Enabled).Should(BeTrue())
 		})
 
-		It("should add the component dynamicaly by metric", func() {
+		It("should add the component dynamically by metric", func() {
 			metricValue := float64(6.4)
 			metricMeasure := &health.ComponentMeasurement{
 				ComponentID: testComponentID,
@@ -525,7 +603,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			Ω(actualHealth.Metrics[testMetric]).Should(Equal(metricValue))
 		})
 
-		It("should add the component dynamicaly by counter", func() {
+		It("should add the component dynamically by counter", func() {
 			counterValue := int32(2)
 			counterMeasure := &health.ComponentMeasurement{
 				ComponentID:   testComponentID,
@@ -539,6 +617,50 @@ var _ = Describe("Health Manager", Ordered, func() {
 			Ω(actualHealth).ShouldNot(BeNil())
 			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Counters[testCounter]).Should(Equal(counterValue))
+		})
+
+		It("shouldn't add the component if the limit is exceeded", func() {
+			go func() {
+				for i := 0; i < utils.ComponentsLimit; i++ {
+					testComponent := <-componentCh
+					Ω(testComponent).ShouldNot(BeNil())
+					Ω(testComponent.ID).ShouldNot(BeEmpty())
+				}
+			}()
+			components := make([]*component.Component, utils.ComponentsLimit)
+			for i := 0; i < utils.ComponentsLimit; i++ {
+				components[i] = &component.Component{
+					ID:         fmt.Sprintf("component-%d", i),
+					CounterIDs: []string{fmt.Sprintf("%s-%d", testCounter, i)},
+				}
+			}
+			err := manager.AddComponents(components)
+			Ω(err).ShouldNot(HaveOccurred())
+
+			mesuresCh <- &health.ComponentMeasurement{
+				ComponentID:   testComponentID,
+				MeasureID:     testCounter,
+				MeasureType:   health.CounterChange,
+				CounterChange: int32(2),
+			}
+
+			var actualHealth *component.Health
+			uniqueComponents := make(map[string]struct{}, utils.ComponentsLimit)
+			for i := 0; i < utils.ComponentsLimit; i++ {
+				actualHealth = <-healthCh
+				uniqueComponents[actualHealth.ComponentID] = struct{}{}
+			}
+			Ω(len(uniqueComponents)).Should(Equal(utils.ComponentsLimit))
+			_, testComponentAdded := uniqueComponents[testComponentID]
+			Ω(testComponentAdded).Should(BeFalse())
+
+			go func() {
+				for i := 0; i < utils.ComponentsLimit; i++ {
+					<-healthCh
+				}
+			}()
+			close(mesuresCh)
+			manager.Shutdown()
 		})
 
 		It("shouldn't add the counter if id is not unique per component", func() {
@@ -561,6 +683,46 @@ var _ = Describe("Health Manager", Ordered, func() {
 			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Counters[testMetric]).Should(Equal(int32(0)))
 			Ω(actualHealth.Metrics[testMetric]).Should(Equal(float64(0)))
+		})
+
+		It("shouldn't add the counter if measures limit is exceeded", func() {
+			go func() {
+				testComponent := <-componentCh
+				Ω(testComponent).ShouldNot(BeNil())
+				Ω(testComponent.ID).ShouldNot(BeEmpty())
+			}()
+			counterIDs := make([]string, utils.ComponentMeasuresLimit)
+			for i := 0; i < len(counterIDs); i++ {
+				counterIDs[i] = fmt.Sprintf("%s-%d", testCounter, i)
+			}
+			components := []*component.Component{{
+				ID:         testComponentID,
+				CounterIDs: counterIDs,
+			}}
+			err := manager.AddComponents(components)
+			Ω(err).ShouldNot(HaveOccurred())
+
+			counterValue := int32(2)
+			for i := 0; i < utils.ComponentMeasuresLimit; i++ {
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID:   testComponentID,
+					MeasureID:     fmt.Sprintf("%s-%d", testCounter, i),
+					MeasureType:   health.CounterChange,
+					CounterChange: counterValue,
+				}
+			}
+
+			mesuresCh <- &health.ComponentMeasurement{
+				ComponentID:   testComponentID,
+				MeasureID:     fmt.Sprintf("%s-%d", testCounter, utils.ComponentMeasuresLimit),
+				MeasureType:   health.CounterChange,
+				CounterChange: counterValue,
+			}
+
+			actualHealth := <-healthCh
+			Ω(len(actualHealth.Counters)).Should(Equal(utils.ComponentMeasuresLimit))
+			Ω(actualHealth.Counters[fmt.Sprintf("%s-%d", testCounter, utils.ComponentMeasuresLimit-1)]).Should(Equal(counterValue))
+			Ω(actualHealth.Counters[fmt.Sprintf("%s-%d", testCounter, utils.ComponentMeasuresLimit)]).Should(Equal(int32(0)))
 		})
 
 		It("should add the counter if id is unique per component", func() {
@@ -606,6 +768,59 @@ var _ = Describe("Health Manager", Ordered, func() {
 			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
 			Ω(actualHealth.Metrics[testCounter]).Should(Equal(float64(0)))
 			Ω(actualHealth.Counters[testCounter]).Should(Equal(int32(0)))
+		})
+
+		It("shouldn't add the metric if measures limit is exceeded", func() {
+			go func() {
+				testComponent := <-componentCh
+				Ω(testComponent).ShouldNot(BeNil())
+				Ω(testComponent.ID).ShouldNot(BeEmpty())
+			}()
+			counterIDs := make([]string, utils.ComponentMeasuresLimit/2)
+			metrics := make(map[string]component.Aggregator, utils.ComponentMeasuresLimit/2)
+			for i := 0; i < utils.ComponentMeasuresLimit/2; i++ {
+				counterIDs[i] = fmt.Sprintf("%s-%d", testCounter, i)
+				metrics[fmt.Sprintf("%s-%d", testMetric, i)] = component.DefaultAggregator
+			}
+			components := []*component.Component{{
+				ID:         testComponentID,
+				CounterIDs: counterIDs,
+				Metrics:    metrics,
+			}}
+			err := manager.AddComponents(components)
+			Ω(err).ShouldNot(HaveOccurred())
+
+			counterValue := int32(2)
+			metricValue := float64(2.3)
+			for i := 0; i < utils.ComponentMeasuresLimit/2; i++ {
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID:   testComponentID,
+					MeasureID:     fmt.Sprintf("%s-%d", testCounter, i),
+					MeasureType:   health.CounterChange,
+					CounterChange: counterValue,
+				}
+
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID: testComponentID,
+					MeasureID:   fmt.Sprintf("%s-%d", testMetric, i),
+					MeasureType: health.Metric,
+					MetricValue: metricValue,
+				}
+			}
+
+			mesuresCh <- &health.ComponentMeasurement{
+				ComponentID: testComponentID,
+				MeasureID:   fmt.Sprintf("%s-%d", testMetric, utils.ComponentMeasuresLimit),
+				MeasureType: health.Metric,
+				MetricValue: metricValue,
+			}
+
+			actualHealth := <-healthCh
+			Ω(len(actualHealth.Counters)).Should(Equal(utils.ComponentMeasuresLimit / 2))
+			Ω(len(actualHealth.Metrics)).Should(Equal(utils.ComponentMeasuresLimit / 2))
+			Ω(actualHealth.Counters[fmt.Sprintf("%s-%d", testCounter, utils.ComponentMeasuresLimit/2-1)]).Should(Equal(counterValue))
+			Ω(actualHealth.Metrics[fmt.Sprintf("%s-%d", testMetric, utils.ComponentMeasuresLimit/2-1)]).Should(Equal(metricValue))
+			Ω(actualHealth.Metrics[fmt.Sprintf("%s-%d", testMetric, utils.ComponentMeasuresLimit)]).Should(Equal(float64(0)))
 		})
 
 		It("should add the metric if id is unique per component", func() {

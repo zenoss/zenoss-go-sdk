@@ -19,4 +19,8 @@ var (
 	ErrMeasureIDTaken = errors.New("measure with such ID already exist")
 	// ErrManagerNotStarted defines not initialized manager error
 	ErrManagerNotStarted = errors.New("health manager is not started")
+	// ErrComponentsLimitExceeded defines components limit exceeded error
+	ErrComponentsLimitExceeded = errors.New("number of components exceeds the limit")
+	// ErrComponentMeasuresLimitExceeded defines component measures limit exceeded error
+	ErrComponentMeasuresLimitExceeded = errors.New("component measures number exceeds the limit")
 )

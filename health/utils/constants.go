@@ -19,4 +19,7 @@ const (
 	HealthyStatus   = "Healthy"
 	DegradeStatus   = "Degrade"
 	UnhealthyStatus = "Unhealthy"
+
+	ComponentsLimit        = 1000
+	ComponentMeasuresLimit = 100
 )

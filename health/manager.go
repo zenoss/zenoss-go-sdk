@@ -101,7 +101,9 @@ type Manager interface {
 	// IsStarted return the status of the manager
 	IsStarted() bool
 	// AddComponents provides a simple interface to register monitored components
-	AddComponents(components []*component.Component)
+	AddComponents(components []*component.Component) error
+	// DeleteComponents removes components with the IDs provided from monitoring
+	DeleteComponents(componentIDs []string)
 
 	Done() <-chan struct{}
 }
@@ -234,9 +236,20 @@ func (hm *healthManager) IsStarted() bool {
 	return hm.started.Load()
 }
 
-func (hm *healthManager) AddComponents(components []*component.Component) {
+func (hm *healthManager) AddComponents(components []*component.Component) error {
 	hm.registry.lock()
 	defer hm.registry.unlock()
+
+	uniqueComponents := make(map[string]struct{}, len(components))
+	for _, c := range components {
+		uniqueComponents[c.ID] = struct{}{}
+		if c.TargetID != "" {
+			uniqueComponents[c.TargetID] = struct{}{}
+		}
+	}
+	if len(uniqueComponents)+len(hm.registry.getRawHealthMap()) > utils.ComponentsLimit {
+		return utils.ErrComponentsLimitExceeded
+	}
 
 	for _, newComponent := range components {
 		hm.registry.setRawHealthForComponent(newRawHealth(newComponent))
@@ -259,6 +272,35 @@ func (hm *healthManager) AddComponents(components []*component.Component) {
 				hm.componentIn <- targetComponent
 			}
 		}
+	}
+
+	return nil
+}
+
+func (hm *healthManager) DeleteComponents(componentIDs []string) {
+	hm.registry.lock()
+	defer hm.registry.unlock()
+
+	targetsToRemove := map[string]struct{}{}
+	for _, cID := range componentIDs {
+		rHealth, ok := hm.registry.getRawHealthForComponent(cID)
+		if !ok {
+			continue
+		}
+		if targetID := rHealth.component.TargetID; targetID != "" {
+			targetsToRemove[targetID] = struct{}{}
+		}
+		hm.registry.removeRawHealthForComponent(cID)
+	}
+
+	for _, rHealth := range hm.registry.getRawHealthMap() {
+		// targets that have impacting components left should not be deleted
+		delete(targetsToRemove, rHealth.component.TargetID)
+	}
+
+	for tcID := range targetsToRemove {
+		hm.registry.removeRawHealthForComponent(tcID)
+		hm.registry.removeTarget(tcID)
 	}
 }
 
@@ -326,6 +368,9 @@ func (hm *healthManager) updateComponentHealthData(measure *ComponentMeasurement
 		if !hm.registrationOnCollect() {
 			return utils.ErrComponentNotRegistered
 		}
+		if len(hm.registry.getRawHealthMap())+1 > utils.ComponentsLimit {
+			return utils.ErrComponentsLimitExceeded
+		}
 		componentHealth, err = hm.buildComponentFromMeasure(measure)
 		if err != nil {
 			return fmt.Errorf("unable to register component automatically: %w", err)
@@ -364,6 +409,9 @@ func (hm *healthManager) updateComponentsMetric(cHealth *rawHealth, measure *Com
 		if !hm.registrationOnCollect() {
 			return utils.ErrMetricNotRegistered
 		}
+		if cHealth.component.IsMeasuresLimitExceeded(1) {
+			return utils.ErrComponentMeasuresLimitExceeded
+		}
 		if !cHealth.component.IsMeasureIDUnique(measure.MeasureID) {
 			return utils.ErrMeasureIDTaken
 		}
@@ -385,6 +433,9 @@ func (hm *healthManager) updateComponentsCounter(cHealth *rawHealth, measure *Co
 		if !slices.Contains(cHealth.component.CounterIDs, measure.MeasureID) {
 			if !hm.registrationOnCollect() {
 				return utils.ErrCounterNotRegistered
+			}
+			if cHealth.component.IsMeasuresLimitExceeded(1) {
+				return utils.ErrComponentMeasuresLimitExceeded
 			}
 			if !cHealth.component.IsMeasureIDUnique(measure.MeasureID) {
 				return utils.ErrMeasureIDTaken

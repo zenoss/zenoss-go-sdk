@@ -29,6 +29,9 @@ func New(
 	if len(set) < len(metrics)+len(counterIDs)+len(totalCounterIDs) {
 		return nil, utils.ErrMeasureIDTaken
 	}
+	if len(set) > utils.ComponentMeasuresLimit {
+		return nil, utils.ErrComponentMeasuresLimitExceeded
+	}
 	if cType == "" {
 		cType = utils.DefaultComponentType
 	}
@@ -77,9 +80,14 @@ const (
 
 // IsMeasureIDUnique searches through all metric and counter IDs and
 // returns false if such ID is already taken
-func (t *Component) IsMeasureIDUnique(id string) bool {
-	_, metricOk := t.Metrics[id]
+func (c *Component) IsMeasureIDUnique(id string) bool {
+	_, metricOk := c.Metrics[id]
 	return !(metricOk ||
-		slices.Contains(t.CounterIDs, id) ||
-		slices.Contains(t.TotalCounterIDs, id))
+		slices.Contains(c.CounterIDs, id) ||
+		slices.Contains(c.TotalCounterIDs, id))
+}
+
+func (c *Component) IsMeasuresLimitExceeded(newMeasures int) bool {
+	return len(c.Metrics)+len(c.CounterIDs)+len(c.TotalCounterIDs)+
+		newMeasures > utils.ComponentMeasuresLimit
 }
