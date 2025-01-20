@@ -41,9 +41,9 @@ func (l *LogDestination) Register(_ context.Context, component *component.Compon
 
 func (l *LogDestination) logComponentInfo(component *component.Component) {
 	l.log.Info().Msgf("Got component update "+
-		"ComponentID: %s, TargetID: %s, Heartbeat Enabled: %t, CounterIDs=%v, TotalCounterIDs=%v MetricIDs=%v",
+		"ComponentID: %s, TargetID: %s, Heartbeat Enabled: %t, CounterIDs=%v, TotalCounterIDs=%v, MetricIDs=%v",
 		component.ID, component.TargetID, component.EnableHeartbeat,
-		component.CounterIDs, component.TotalCounterIDs, component.MetricIDs,
+		component.CounterIDs, component.TotalCounterIDs, component.Metrics,
 	)
 }
 

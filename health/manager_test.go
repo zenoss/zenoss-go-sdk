@@ -31,7 +31,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 	addTestComponent := func(target string) {
 		comp, _ := component.New(
 			testComponentID, utils.DefaultComponentType, target, true,
-			[]string{testMetric},
+			map[string]component.Aggregator{testMetric: component.DefaultAggregator},
 			[]string{testCounter},
 			[]string{testTotalCounter},
 		)
@@ -803,7 +803,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			)
 			low2, _ := component.New(
 				"low2", "low", mid1.ID, false,
-				[]string{testMetric}, nil, nil,
+				map[string]component.Aggregator{testMetric: component.DefaultAggregator}, nil, nil,
 			)
 			low3, _ := component.New(
 				"low3", "low", mid1.ID, false,
@@ -1002,6 +1002,107 @@ var _ = Describe("Health Manager", Ordered, func() {
 				HealthStatus: component.Unhealthy,
 			}))
 			Ω(len(targetComponentsHealth["target.high"].Messages)).Should(Equal(2))
+		})
+	})
+
+	Context("metrics aggregation", func() {
+		var (
+			metricMean  = "test.metric.mean"
+			metricMin   = "test.metric.min"
+			metricMax   = "test.metric.max"
+			metricSum   = "test.metric.sum"
+			metricCount = "test.metric.count"
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			config := health.NewConfig()
+			config.CollectionCycle = 200 * time.Millisecond
+			config.LogLevel = "fatal"
+			manager = health.NewManager(ctx, config)
+
+			mesuresCh = make(chan *health.ComponentMeasurement)
+			healthCh = make(chan *component.Health)
+			componentCh = make(chan *component.Component)
+
+			controller := make(chan struct{})
+			go func() {
+				testComponent := <-componentCh
+				Ω(testComponent.ID).Should(Equal(testComponentID))
+				close(controller)
+			}()
+
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
+			comp, _ := component.New(
+				testComponentID, utils.DefaultComponentType, "", true,
+				map[string]component.Aggregator{
+					metricMean:  component.AggregatorMean,
+					metricMin:   component.AggregatorMin,
+					metricMax:   component.AggregatorMax,
+					metricSum:   component.AggregatorSum,
+					metricCount: component.AggregatorCount,
+				},
+				[]string{testCounter},
+				[]string{testTotalCounter},
+			)
+			manager.AddComponents([]*component.Component{comp})
+			<-controller
+		})
+
+		AfterEach(func() {
+			controller := make(chan struct{})
+			go func() {
+				<-healthCh
+				close(controller)
+			}()
+			close(mesuresCh)
+			manager.Shutdown()
+			<-controller
+		})
+
+		It("should calculate correct metric values for aggregators", func() {
+			for i := 1; i <= 10; i++ {
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID: testComponentID,
+					MeasureID:   metricMean,
+					MeasureType: health.Metric,
+					MetricValue: float64(i),
+				}
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID: testComponentID,
+					MeasureID:   metricMin,
+					MeasureType: health.Metric,
+					MetricValue: float64(i),
+				}
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID: testComponentID,
+					MeasureID:   metricMax,
+					MeasureType: health.Metric,
+					MetricValue: float64(i),
+				}
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID: testComponentID,
+					MeasureID:   metricSum,
+					MeasureType: health.Metric,
+					MetricValue: float64(i),
+				}
+				mesuresCh <- &health.ComponentMeasurement{
+					ComponentID: testComponentID,
+					MeasureID:   metricCount,
+					MeasureType: health.Metric,
+					MetricValue: float64(i),
+				}
+			}
+
+			actualHealth := <-healthCh
+			Ω(actualHealth).ShouldNot(BeNil())
+			Ω(actualHealth.ComponentID).Should(Equal(testComponentID))
+			Ω(actualHealth.Metrics[metricMean]).Should(Equal(5.5))
+			Ω(actualHealth.Metrics[metricMin]).Should(Equal(float64(1)))
+			Ω(actualHealth.Metrics[metricMax]).Should(Equal(float64(10)))
+			Ω(actualHealth.Metrics[metricSum]).Should(Equal(float64(55)))
+			Ω(actualHealth.Metrics[metricCount]).Should(Equal(float64(10)))
 		})
 	})
 })

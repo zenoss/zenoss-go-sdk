@@ -6,32 +6,42 @@ import (
 	"github.com/zenoss/zenoss-go-sdk/health/component"
 )
 
-func newRawHealth(t *component.Component) *rawHealth {
-	tHealth := &rawHealth{
-		component:     t,
+func newRawHealth(c *component.Component) *rawHealth {
+	cHealth := &rawHealth{
+		component:     c,
 		status:        component.Healthy,
 		heartBeat:     false,
 		counters:      make(map[string]int32),
 		totalCounters: make(map[string]int32),
-		rawMetrics:    make(map[string][]float64),
+		metrics:       make(map[string]*metric),
 		messages:      make([]*component.Message, 0),
 	}
-	for _, metricID := range t.MetricIDs {
-		tHealth.rawMetrics[metricID] = make([]float64, 0)
+	for metricID, ag := range c.Metrics {
+		cHealth.metrics[metricID] = &metric{
+			values:     make([]float64, 0),
+			aggregator: ag,
+		}
 	}
-	return tHealth
+	return cHealth
 }
 
 // rawHealth is a struct that keeps component information together with raw component health
-type rawHealth struct {
-	component     *component.Component
-	status        component.HealthStatus
-	heartBeat     bool
-	counters      map[string]int32
-	totalCounters map[string]int32
-	rawMetrics    map[string][]float64
-	messages      []*component.Message
-}
+type (
+	rawHealth struct {
+		component     *component.Component
+		status        component.HealthStatus
+		heartBeat     bool
+		counters      map[string]int32
+		totalCounters map[string]int32
+		metrics       map[string]*metric
+		messages      []*component.Message
+	}
+
+	metric struct {
+		values     []float64
+		aggregator component.Aggregator
+	}
+)
 
 // healthRegistry keeps raw health data and provides an interface to get and update it
 // It is a caller responsibility to lock and unlock registry before usage
