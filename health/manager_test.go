@@ -90,15 +90,12 @@ var _ = Describe("Health Manager", Ordered, func() {
 
 			switch expStatus {
 			case component.Healthy:
-				// Ω(targetHealth.Status).Should(Equal(component.Healthy))
 				Ω(len(targetHealth.Messages)).Should(Equal(0))
 			case component.Degrade:
-				// Ω(targetHealth.Status).Should(Equal(component.Degrade))
 				Ω(len(targetHealth.Messages)).Should(Equal(1))
 				Ω(targetHealth.Messages[0].HealthStatus).Should(Equal(component.Degrade))
 				Ω(targetHealth.Messages[0].Summary).Should(Equal(fmt.Sprintf("%s degraded", testComponentID)))
 			case component.Unhealthy:
-				// Ω(expStatus).Should(Equal(targetHealth.Status))
 				Ω(len(targetHealth.Messages)).Should(Equal(1))
 				Ω(targetHealth.Messages[0].HealthStatus).Should(Equal(component.Unhealthy))
 				Ω(targetHealth.Messages[0].Summary).Should(Equal(fmt.Sprintf("%s unhealthy", testComponentID)))
@@ -1225,7 +1222,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			shutdown()
 		})
 
-		It("should produce correct health of the target with custom function and type priorities defined", func() {
+		It("should produce correct health for the target with custom function and type priorities defined", func() {
 			componentsNumber = 11
 
 			cTypeLow, cTypeHigh := "low.priority", "high.priority"
