@@ -56,8 +56,9 @@ type Component struct {
 	CounterIDs      []string
 	TotalCounterIDs []string
 
-	// Type is just a string that helps you to categorize your components
-	// In future it will also help us to define priority of different type of components
+	// Type is just a string that helps you to categorize your components.
+	// It also allows to define priority of different type of components
+	// to set a measure of their impact on the health of their target
 	Type string
 	// TargetID defines a higher level target component that is impacted by the health of the current component
 	TargetID string
@@ -65,6 +66,16 @@ type Component struct {
 	// whether you want the heartbeat to affect your components health
 	EnableHeartbeat bool
 }
+
+type Priority int
+
+const (
+	PriorityLow Priority = iota
+	PriorityNormal
+	PriorityHigh
+
+	DefaultPriority = PriorityNormal
+)
 
 type Aggregator int
 

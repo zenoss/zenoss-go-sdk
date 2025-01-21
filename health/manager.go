@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/zenoss/zenoss-go-sdk/health/component"
 	logging "github.com/zenoss/zenoss-go-sdk/health/log"
 	"github.com/zenoss/zenoss-go-sdk/health/utils"
@@ -104,6 +106,8 @@ type Manager interface {
 	AddComponents(components []*component.Component) error
 	// DeleteComponents removes components with the IDs provided from monitoring
 	DeleteComponents(componentIDs []string)
+	// SetPriority defines the priority of the impact of components of a given type
+	SetPriority(componentType string, priority component.Priority)
 
 	Done() <-chan struct{}
 }
@@ -219,6 +223,15 @@ func (hm *healthManager) registrationOnCollect() bool {
 	return hm.config.RegistrationOnCollect
 }
 
+func (hm *healthManager) targetHealthFn() func(map[component.HealthStatus]map[component.Priority]int) component.HealthStatus {
+	hm.configMu.RLock()
+	defer hm.configMu.RUnlock()
+	if hm.config.TargetHealthFn == nil {
+		return defaultTargetHealthFn
+	}
+	return hm.config.TargetHealthFn
+}
+
 func (hm *healthManager) Shutdown() {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
@@ -302,6 +315,12 @@ func (hm *healthManager) DeleteComponents(componentIDs []string) {
 		hm.registry.removeRawHealthForComponent(tcID)
 		hm.registry.removeTarget(tcID)
 	}
+}
+
+func (hm *healthManager) SetPriority(componentType string, priority component.Priority) {
+	hm.registry.lock()
+	defer hm.registry.unlock()
+	hm.registry.setPriorityForType(componentType, priority)
 }
 
 func (hm *healthManager) updateTargetsRegistry(c *component.Component) {
@@ -500,13 +519,21 @@ func (hm *healthManager) healthForwarder(ctx context.Context, configUpd <-chan *
 type targetInfo struct {
 	componentID string
 
-	impactsCount   int
-	degradedCount  int
-	unhealthyCount int
+	impactCounts map[component.HealthStatus]map[component.Priority]int
+	impactHB     *component.HeartBeat
+	impactMsgs   []*component.Message
+	ownHealth    *component.Health
+}
 
-	ownHealth  *component.Health
-	impactHB   *component.HeartBeat
-	impactMsgs []*component.Message
+func newTarget(componentID string) *targetInfo {
+	return &targetInfo{
+		componentID: componentID,
+		impactCounts: map[component.HealthStatus]map[component.Priority]int{
+			component.Healthy:   make(map[component.Priority]int),
+			component.Degrade:   make(map[component.Priority]int),
+			component.Unhealthy: make(map[component.Priority]int),
+		},
+	}
 }
 
 func (hm *healthManager) writeHealthResult(healthIn chan<- *component.Health) {
@@ -520,10 +547,8 @@ func (hm *healthManager) writeHealthResult(healthIn chan<- *component.Health) {
 
 		if isTargetComponent, hbEnabled := hm.registry.checkTarget(cHealth.ComponentID); isTargetComponent {
 			if _, ok := targetsInfo[cHealth.ComponentID]; !ok {
-				targetsInfo[cHealth.ComponentID] = &targetInfo{
-					componentID: cHealth.ComponentID,
-					impactHB:    &component.HeartBeat{Enabled: hbEnabled},
-				}
+				targetsInfo[cHealth.ComponentID] = newTarget(cHealth.ComponentID)
+				targetsInfo[cHealth.ComponentID].impactHB = &component.HeartBeat{Enabled: hbEnabled}
 			}
 			targetsInfo[cHealth.ComponentID].ownHealth = cHealth
 		} else {
@@ -532,7 +557,7 @@ func (hm *healthManager) writeHealthResult(healthIn chan<- *component.Health) {
 			// current component impacts some target component and is not impacted by any other component
 			if cHealth.TargetID != "" {
 				if _, ok := targetsInfo[cHealth.TargetID]; !ok {
-					targetsInfo[cHealth.TargetID] = &targetInfo{componentID: cHealth.TargetID}
+					targetsInfo[cHealth.TargetID] = newTarget(cHealth.TargetID)
 				}
 				hm.updateImpactedTargetInfo(targetsInfo[cHealth.TargetID], cHealth)
 			}
@@ -615,18 +640,16 @@ func (hm *healthManager) buildAndPushHealthForTarget(
 }
 
 func (hm *healthManager) updateImpactedTargetInfo(targetInfo *targetInfo, impactedBy *component.Health) {
-	targetInfo.impactsCount++
-
+	priority := hm.registry.getPriorityForType(impactedBy.ComponentType)
+	targetInfo.impactCounts[impactedBy.Status][priority]++
 	switch impactedBy.Status {
 	case component.Degrade:
-		targetInfo.degradedCount++
 		targetInfo.impactMsgs = append(targetInfo.impactMsgs, &component.Message{
 			Summary:      fmt.Sprintf("%s degraded", impactedBy.ComponentID),
 			AffectHealth: true,
 			HealthStatus: impactedBy.Status,
 		})
 	case component.Unhealthy:
-		targetInfo.unhealthyCount++
 		targetInfo.impactMsgs = append(targetInfo.impactMsgs, &component.Message{
 			Summary:      fmt.Sprintf("%s unhealthy", impactedBy.ComponentID),
 			AffectHealth: true,
@@ -645,18 +668,8 @@ func (hm *healthManager) updateImpactedTargetInfo(targetInfo *targetInfo, impact
 	}
 }
 
-func (*healthManager) resolveTargetHealthStatus(target *targetInfo) {
-	ratio := float64(target.degradedCount+target.unhealthyCount) / float64(target.impactsCount)
-	switch {
-	case target.unhealthyCount >= 1 || (target.impactsCount > 2 && ratio >= 0.5):
-		// at least one component is unhealthy or half or more are degraded -> target is unhealthy
-		target.ownHealth.Status = component.Unhealthy
-	case ratio > 0:
-		// one or less than half of the components are degraded -> target is degraded
-		target.ownHealth.Status = component.Degrade
-	default:
-		target.ownHealth.Status = component.Healthy
-	}
+func (hm *healthManager) resolveTargetHealthStatus(target *targetInfo) {
+	target.ownHealth.Status = hm.targetHealthFn()(target.impactCounts)
 }
 
 func (*healthManager) resolveTargetHeartbeat(target *targetInfo) {
@@ -667,6 +680,32 @@ func (*healthManager) resolveTargetHeartbeat(target *targetInfo) {
 	target.ownHealth.Heartbeat = &component.HeartBeat{
 		Enabled: target.ownHealth.Heartbeat.Enabled || target.impactHB.Enabled,
 		Beats:   target.ownHealth.Heartbeat.Beats || target.impactHB.Beats,
+	}
+}
+
+func defaultTargetHealthFn(impactCounts map[component.HealthStatus]map[component.Priority]int) component.HealthStatus {
+	var healthyCount, unhealthyCount, totalCount int
+	for healthStatus, impactsByHealth := range impactCounts {
+		countByHealth := sdk_utils.Sum(maps.Values(impactsByHealth))
+		switch healthStatus {
+		case component.Healthy:
+			healthyCount = countByHealth
+		case component.Unhealthy:
+			unhealthyCount = countByHealth
+		}
+		totalCount += countByHealth
+	}
+
+	r := float64(totalCount-healthyCount) / float64(totalCount)
+	switch {
+	case unhealthyCount >= 1 || (totalCount > 2 && r >= 0.5):
+		// at least one component is unhealthy or half or more are degraded -> target is unhealthy
+		return component.Unhealthy
+	case r > 0:
+		// one or less than half of the components are degraded -> target is degraded
+		return component.Degrade
+	default:
+		return component.Healthy
 	}
 }
 

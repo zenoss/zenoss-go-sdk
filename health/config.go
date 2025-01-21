@@ -2,6 +2,8 @@ package health
 
 import (
 	"time"
+
+	"github.com/zenoss/zenoss-go-sdk/health/component"
 )
 
 // Config is a struct that we pass to health manager. It defines some basic configuration
@@ -18,6 +20,11 @@ type Config struct {
 	// LogLevel is applied for default health logger
 	// Possible values: trace, debug, info, warn, error, fatal, panic
 	LogLevel string
+
+	// TargetHealthFn specifies the way of calculating the health of a target
+	// based on the health of a number of components impacting it, taking into account their priority.
+	// If not set, manager uses its default function
+	TargetHealthFn func(map[component.HealthStatus]map[component.Priority]int) component.HealthStatus
 }
 
 // NewConfig is a constructor for health.Config. It also defines some default values

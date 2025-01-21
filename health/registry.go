@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/zenoss/zenoss-go-sdk/health/component"
+	"github.com/zenoss/zenoss-go-sdk/health/utils"
 )
 
 func newRawHealth(c *component.Component) *rawHealth {
@@ -52,10 +53,14 @@ type healthRegistry interface {
 	setRawHealthForComponent(rawComponentHealth *rawHealth)
 	removeRawHealthForComponent(componentID string)
 	getRawHealthMap() map[string]*rawHealth
+
 	checkTarget(componentID string) (registered bool, hbEnabled bool)
 	setTarget(componentID string, hbEnabled bool)
 	removeTarget(componentID string)
 	getTargetsMap() map[string]bool
+
+	getPriorityForType(componentType string) component.Priority
+	setPriorityForType(componentType string, priority component.Priority)
 }
 
 func newHealthRegistry() healthRegistry {
@@ -63,6 +68,7 @@ func newHealthRegistry() healthRegistry {
 		mutex:            &sync.Mutex{},
 		rawHealth:        make(map[string]*rawHealth),
 		targetComponents: make(map[string]bool),
+		typePriorities:   make(map[string]component.Priority),
 	}
 }
 
@@ -71,6 +77,7 @@ type memRegistry struct {
 	mutex            *sync.Mutex
 	rawHealth        map[string]*rawHealth
 	targetComponents map[string]bool
+	typePriorities   map[string]component.Priority
 }
 
 func (reg *memRegistry) lock() {
@@ -113,4 +120,21 @@ func (reg *memRegistry) removeTarget(componentID string) {
 
 func (reg *memRegistry) getTargetsMap() map[string]bool {
 	return reg.targetComponents
+}
+
+func (reg *memRegistry) getPriorityForType(componentType string) component.Priority {
+	if componentType == "" {
+		componentType = utils.DefaultComponentType
+	}
+	if priority, ok := reg.typePriorities[componentType]; ok {
+		return priority
+	}
+	return component.DefaultPriority
+}
+
+func (reg *memRegistry) setPriorityForType(componentType string, priority component.Priority) {
+	if componentType == "" {
+		componentType = utils.DefaultComponentType
+	}
+	reg.typePriorities[componentType] = priority
 }
