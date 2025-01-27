@@ -86,18 +86,16 @@ var _ = Describe("Health Manager", Ordered, func() {
 			targetHealth := <-healthCh
 			Ω(targetHealth).ShouldNot(BeNil())
 			Ω(targetHealth.ComponentID).Should(Equal(utils.DefaultHealthTarget))
+			Ω(expStatus).Should(Equal(targetHealth.Status))
 
 			switch expStatus {
 			case component.Healthy:
-				Ω(targetHealth.Status).Should(Equal(component.Healthy))
 				Ω(len(targetHealth.Messages)).Should(Equal(0))
 			case component.Degrade:
-				Ω(targetHealth.Status).Should(Equal(component.Degrade))
 				Ω(len(targetHealth.Messages)).Should(Equal(1))
 				Ω(targetHealth.Messages[0].HealthStatus).Should(Equal(component.Degrade))
 				Ω(targetHealth.Messages[0].Summary).Should(Equal(fmt.Sprintf("%s degraded", testComponentID)))
 			case component.Unhealthy:
-				Ω(targetHealth.Status).Should(Equal(component.Unhealthy))
 				Ω(len(targetHealth.Messages)).Should(Equal(1))
 				Ω(targetHealth.Messages[0].HealthStatus).Should(Equal(component.Unhealthy))
 				Ω(targetHealth.Messages[0].Summary).Should(Equal(fmt.Sprintf("%s unhealthy", testComponentID)))
@@ -961,6 +959,8 @@ var _ = Describe("Health Manager", Ordered, func() {
 	})
 
 	Context("hierarchical components impact", func() {
+		var componentsNumber int
+
 		BeforeEach(func() {
 			ctx = context.Background()
 
@@ -974,10 +974,10 @@ var _ = Describe("Health Manager", Ordered, func() {
 			componentCh = make(chan *component.Component)
 		})
 
-		AfterEach(func() {
+		shutdown := func() {
 			controller := make(chan struct{})
 			go func() {
-				for range 8 {
+				for range componentsNumber {
 					<-healthCh
 				}
 				close(controller)
@@ -985,7 +985,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			close(mesuresCh)
 			manager.Shutdown()
 			<-controller
-		})
+		}
 
 		It("should produce correct health results for targets from lower level components impact", func() {
 			//                target.high -> (U+HB)
@@ -998,6 +998,7 @@ var _ = Describe("Health Manager", Ordered, func() {
 			//        ^     ^           ^     ^    ^
 			//       low0  low1        low2  low3  low4
 			//
+			componentsNumber = 8
 
 			mid0, _ := component.New(
 				"target.mid0", "mid", "target.high", true,
@@ -1217,6 +1218,159 @@ var _ = Describe("Health Manager", Ordered, func() {
 				HealthStatus: component.Unhealthy,
 			}))
 			Ω(len(targetComponentsHealth["target.high"].Messages)).Should(Equal(2))
+
+			shutdown()
+		})
+
+		It("should produce correct health for the target with custom function and type priorities defined", func() {
+			componentsNumber = 11
+
+			cTypeLow, cTypeHigh := "low.priority", "high.priority"
+			manager.SetPriority(cTypeLow, component.PriorityLow)
+			manager.SetPriority(cTypeHigh, component.PriorityHigh)
+
+			err := manager.UpdateConfig(&health.Config{
+				LogLevel:        "fatal",
+				CollectionCycle: 1000 * time.Millisecond,
+				TargetHealthFn: func(impactCounts map[component.HealthStatus]map[component.Priority]int) component.HealthStatus {
+					priorityFactor := func(p component.Priority) float64 {
+						switch p {
+						case component.PriorityLow:
+							return 0.5
+						case component.PriorityNormal:
+							return 1
+						case component.PriorityHigh:
+							return 2
+						}
+						return 1
+					}
+
+					var nonHealthyImpact, totalImpact float64
+					for healthStatus, impactsByHealth := range impactCounts {
+						for priority, impactsByPriority := range impactsByHealth {
+							currentImpact := float64(impactsByPriority) * priorityFactor(priority)
+							totalImpact += currentImpact
+
+							if healthStatus != component.Healthy {
+								nonHealthyImpact += currentImpact
+							}
+						}
+					}
+
+					r := nonHealthyImpact / totalImpact
+					switch {
+					case r > 0.5:
+						return component.Unhealthy
+					case r > 0.3:
+						return component.Degrade
+					default:
+						return component.Healthy
+					}
+				},
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			components := make([]*component.Component, 0, componentsNumber)
+			target, _ := component.New(
+				"target.component", utils.DefaultComponentType, "", true,
+				nil, []string{testCounter}, nil,
+			)
+			components = append(components, target)
+			for i := 0; i < componentsNumber-1; i++ {
+				var cType string
+				switch {
+				case i%2 == 0:
+					// even nums are low priority
+					cType = cTypeLow
+				case i > 1:
+					// odd nums (except 1) are high priority
+					cType = cTypeHigh
+				default:
+					cType = utils.DefaultComponentType
+				}
+				c, _ := component.New(
+					fmt.Sprintf("component-%d", i), cType, target.ID, true,
+					nil, nil, nil,
+				)
+				components = append(components, c)
+			}
+
+			manager.Start(ctx, mesuresCh, healthCh, componentCh)
+			controller := make(chan struct{})
+			go func() {
+				for i := 0; i < componentsNumber; i++ {
+					c := <-componentCh
+					Ω(c).ShouldNot(BeNil())
+				}
+
+				close(controller)
+			}()
+			err = manager.AddComponents(components)
+			Ω(err).ShouldNot(HaveOccurred())
+			<-controller
+
+			var (
+				targetHealth    *component.Health
+				nonHealthyCount int
+			)
+
+			for i := 0; i < componentsNumber-1; i++ {
+				healthMeasure := &health.ComponentMeasurement{
+					ComponentID: fmt.Sprintf("component-%d", i),
+					MeasureType: health.HealthStatus,
+				}
+				switch {
+				case i%2 == 0:
+					healthMeasure.HealthStatus = component.Unhealthy
+				default:
+					healthMeasure.HealthStatus = component.Healthy
+				}
+				mesuresCh <- healthMeasure
+			}
+
+			for range componentsNumber {
+				h := <-healthCh
+				if h.ComponentID == target.ID {
+					targetHealth = h
+				} else if h.Status != component.Healthy {
+					nonHealthyCount++
+				}
+			}
+			// half of the components are non-healthy, but they are low priority
+			Ω(nonHealthyCount).Should(Equal(5))
+			// so the target is healthy (acorrding to the custom TargetHealthFn)
+			Ω(targetHealth.Status).Should(Equal(component.Healthy))
+
+			for i := 0; i < componentsNumber-1; i++ {
+				hMeasure := &health.ComponentMeasurement{
+					ComponentID: fmt.Sprintf("component-%d", i),
+					MeasureType: health.HealthStatus,
+				}
+				switch {
+				case i%2 != 0 && i > 3:
+					hMeasure.HealthStatus = component.Unhealthy
+				default:
+					hMeasure.HealthStatus = component.Healthy
+				}
+				mesuresCh <- hMeasure
+			}
+
+			targetHealth = nil
+			nonHealthyCount = 0
+			for range componentsNumber {
+				h := <-healthCh
+				if h.ComponentID == target.ID {
+					targetHealth = h
+				} else if h.Status != component.Healthy {
+					nonHealthyCount++
+				}
+			}
+			// less than half of the components are non-healthy, but they are high priority
+			Ω(nonHealthyCount).Should(Equal(3))
+			// so the target is unhealthy (acorrding to the custom TargetHealthFn)
+			Ω(targetHealth.Status).Should(Equal(component.Unhealthy))
+
+			shutdown()
 		})
 	})
 

@@ -9,12 +9,13 @@ Thus, components can be organized in a hierarchical structure to separate more g
 Relationships are set when each component is defined, by specifying the Target it will affect (or not specifying if it is the highest level component or lives on its own).
 If the referenced Target component is not explicitly defined, it will be created automatically. In that case, its basic properties will be general health status and heartbeat (if at least one component that impacts it has enabled heartbeat).
 
-Currently, the health status of the Target is calculated as follows:
+By default, the health status of the Target is calculated as follows:
 * Target is `Healthy` if all of its components have status `Healthy`.
 * Target is `Degrade` if one or less than half of the components have status `Degrade`.
 * Target is `Unhealthy` if at least one component has status `Unhealthy` or half or more of the components have status `Degrade`.
+* The above can be modified by specifying a custom function `TargetHealthFn` in the [config](#config).
 * Target receives messages indicating specific non-healthy components and their statuses.
-* Target has a heartbeat if at least one of its components has a heartbeat.
+* Target has a heartbeat if at least one of its components (or itself if explicitly set) has a heartbeat.
 
 ## How to use
 
@@ -60,6 +61,9 @@ manager := health.NewManager(ctx, config)
 
 // add configured components
 manager.AddComponents(components)
+
+// set priority for component type
+manager.SetPriority(componentType, component.PriorityHigh)
 
 // start health monitoring
 // after this you are safe to call collector in any part of your program
@@ -114,6 +118,7 @@ Config keeps configuration for whole framework instance. Right now we have these
 * CollectionCycle - how often we should calculate and flush data to a writer. 30 seconds by default.
 * RegistrationOnCollect - whether to allow data collection for unregistered components. Manager will register such components automatically. Not recommended to use, it is better to explicitly define all components. Note: in this case you cannot specify counter as a total counter.
 * LogLevel - log level will be applied to zerolog logger during manager.Start call. Available values: trace, debug, info, warn, error, fatal, panic
+* TargetHealthFn - function for calculating the health of a target based on the health of a number of components impacting it, taking into account their priority. Default function is used if not set
 
 ### Component
 
@@ -121,7 +126,7 @@ Provided by health/component package. Component object keeps data about all its 
 
 Component data:
 * ID
-* Type - just a string. Should help to categorize your components and can be used to help define component priority in future. You can pass empty string, "default" value will be used then.
+* Type - just a string. Should help to categorize your components and can be used to define component priority (low, normal, high). You can pass empty string, "default" value will be used then.
 * TargetID - ID of another (impacted) component
 * MetricIDs - list of float metric IDs (calculate avg value for each metric every cycle)
 * CounterIDs - list of counter IDs (resets to 0 every cycle)
