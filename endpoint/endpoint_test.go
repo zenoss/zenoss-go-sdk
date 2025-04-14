@@ -340,7 +340,6 @@ var _ = Describe("Endpoint", func() {
 				// Skip bundler delay thresholds.
 				e.Flush()
 			})
-
 		})
 
 		Context("PutModels", func() {

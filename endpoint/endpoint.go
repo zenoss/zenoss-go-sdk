@@ -536,7 +536,7 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 	}
 
 	if len(failedMetrics) > 0 {
-		//retrying to register failed metrics from batch
+		// retrying to register failed metrics from batch
 		expBoff.Reset()
 		retryResponse, err := backoff.Retry(
 			ctx,
