@@ -500,12 +500,14 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 	successes := make([]bool, len(metrics))
 	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, len(metrics))
 
+	expBoff := backoff.NewExponentialBackOff()
+	expBoff.InitialInterval = 3 * time.Second
 	registerMetricsresponse, err := backoff.Retry(
 		ctx,
 		func() (*data_registry.RegisterMetricsResponse, error) {
 			return e.CreateOrUpdateMetrics(ctx, metrics)
 		},
-		backoff.WithBackOff(backoff.NewExponentialBackOff()),
+		backoff.WithBackOff(expBoff),
 		backoff.WithMaxTries(3),
 	)
 	if err != nil {
@@ -535,12 +537,13 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 
 	if len(failedMetrics) > 0 {
 		//retrying to register failed metrics from batch
+		expBoff.Reset()
 		retryResponse, err := backoff.Retry(
 			ctx,
 			func() (*data_registry.RegisterMetricsResponse, error) {
 				return e.CreateOrUpdateMetrics(ctx, failedMetrics)
 			},
-			backoff.WithBackOff(backoff.NewExponentialBackOff()),
+			backoff.WithBackOff(expBoff),
 			backoff.WithMaxTries(2),
 		)
 		if err != nil {
