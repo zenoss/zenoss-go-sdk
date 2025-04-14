@@ -49,12 +49,14 @@ var _ = Describe("Endpoint", func() {
 	Context("with basic configuration", func() {
 		BeforeEach(func() {
 			e, err = endpoint.New(endpoint.Config{
-				APIKey:         "x",
-				TestClient:     out,
-				TestRegClient:  regout,
-				MinTTL:         10000,
-				MaxTTL:         100000,
-				CacheSizeLimit: 200000,
+				APIKey:          "x",
+				TestClient:      out,
+				TestRegClient:   regout,
+				MinTTL:          10000,
+				MaxTTL:          100000,
+				InitialBackoff:  10 * time.Millisecond,
+				NumberOfRetries: 3,
+				CacheSizeLimit:  200000,
 			})
 		})
 
