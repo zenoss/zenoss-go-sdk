@@ -144,11 +144,11 @@ type Config struct {
 	// CacheSizeLimit for local cache
 	CacheSizeLimit int `yaml:"cacheSizeLimit"`
 
-	// InitialBackoff is the initial backoff while retrying to register metrics.
+	// InitialBackoff for register retries.
 	// Default: 3 seconds
 	InitialBackoff time.Duration `yaml:"initialBackoff"`
 
-	// NumberOfRetries is the number of retry attempts for the backoff strategy.
+	// NumberOfRetries for registering.
 	// Default: 3 times
 	NumberOfRetries uint `yaml:"NumberOfRetries"`
 
@@ -208,10 +208,9 @@ type MetricIDNameAndHash struct {
 	hash, id, name string
 }
 
-// FailedMetric gives metric, index and error; used for retrying to register metrics.
-type FailedMetric struct {
+type FailedRegistrationContext struct {
 	Metric *data_receiver.Metric
-	Index  int
+	Index  int // an index of metric in the batch to preserve the order
 	Error  string
 }
 
@@ -546,11 +545,11 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 		return successes, metricIDsNamesAndHashes
 	}
 
-	failedMetrics := make([]*FailedMetric, 0)
+	failedMetrics := make([]*FailedRegistrationContext, 0)
 
 	for i, response := range registerMetricsresponse.Responses {
 		if response.Error != "" {
-			failedMetrics = append(failedMetrics, &FailedMetric{
+			failedMetrics = append(failedMetrics, &FailedRegistrationContext{
 				Metric: metrics[i],
 				Index:  i,
 				Error:  response.Error,
@@ -1065,8 +1064,7 @@ func (e *Endpoint) putEvents(events *data_receiver.Events) {
 	)
 }
 
-// extractMetrics is called by registerMetrics func
-func extractMetrics(failedMetrics []*FailedMetric) []*data_receiver.Metric {
+func extractMetrics(failedMetrics []*FailedRegistrationContext) []*data_receiver.Metric {
 	metrics := make([]*data_receiver.Metric, len(failedMetrics))
 	for i, failedMetric := range failedMetrics {
 		metrics[i] = failedMetric.Metric
