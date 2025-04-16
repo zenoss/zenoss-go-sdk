@@ -2,6 +2,7 @@ package endpoint_test
 
 import (
 	"context"
+	"errors"
 	stdlog "log"
 	"os"
 	"testing"
@@ -48,12 +49,14 @@ var _ = Describe("Endpoint", func() {
 	Context("with basic configuration", func() {
 		BeforeEach(func() {
 			e, err = endpoint.New(endpoint.Config{
-				APIKey:         "x",
-				TestClient:     out,
-				TestRegClient:  regout,
-				MinTTL:         10000,
-				MaxTTL:         100000,
-				CacheSizeLimit: 200000,
+				APIKey:          "x",
+				TestClient:      out,
+				TestRegClient:   regout,
+				MinTTL:          10000,
+				MaxTTL:          100000,
+				InitialBackoff:  10 * time.Millisecond,
+				NumberOfRetries: 3,
+				CacheSizeLimit:  200000,
 			})
 		})
 
@@ -154,6 +157,188 @@ var _ = Describe("Endpoint", func() {
 				Ω(compactMetrics).ShouldNot(BeNil())
 				Ω(len(compactMetrics)).Should(BeNumerically("==", 1))
 				Ω(len(failedMetrics)).Should(BeNumerically("==", 0))
+				// Skip bundler delay thresholds.
+				e.Flush()
+			})
+
+			It("returns failed metrics if CreateOrUpdateMetrics fails on first try", func() {
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
+					Return(nil, errors.New("initial registration error"))
+
+				inputMetrics := []*data_receiver.Metric{
+					{
+						Metric:    "failmetric",
+						Value:     123,
+						Timestamp: time.Now().UnixNano() / 1e6,
+						Dimensions: map[string]string{
+							"source": "sdk.zdm.test",
+							"app":    "sdktest",
+						},
+					},
+				}
+
+				compactMetrics, failedMetrics := e.ConvertMetrics(context.TODO(), inputMetrics)
+
+				Ω(compactMetrics).Should(HaveLen(0))
+				Ω(failedMetrics).Should(HaveLen(1))
+				Ω(failedMetrics[0].Metric).Should(Equal("failmetric"))
+
+				e.Flush()
+			})
+
+			It("returns failed metrics if retry after partial failure also fails", func() {
+				responses := make([]*data_registry.RegisterMetricVerboseResponse, 0)
+				verboseResponse := &data_registry.RegisterMetricVerboseResponse{
+					Response: &data_registry.RegisterMetricResponse{
+						InstanceId: "id123456canonical1",
+						Name:       "canonical1",
+					},
+				}
+				errorResponse := &data_registry.RegisterMetricVerboseResponse{
+					Error: "error occured",
+				}
+				responses = append(responses, verboseResponse, errorResponse)
+				regCreateOrUpdateStreamingClientMock := &data_registry.MockDataRegistryService_CreateOrUpdateMetricsClient{}
+				regCreateOrUpdateStreamingClientMock.On("Send", mock.Anything).Return(nil)
+				regCreateOrUpdateStreamingClientMock.On("CloseAndRecv").Return(&data_registry.RegisterMetricsResponse{
+					Responses: responses,
+				}, nil)
+
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
+					Return(regCreateOrUpdateStreamingClientMock, nil).Once()
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
+					Return(nil, errors.New("Error closing stream")).Times(3)
+				inputMetrics := []*data_receiver.Metric{
+					{
+						Metric:    "canonical1",
+						Value:     1,
+						Timestamp: time.Now().UnixNano() / 1e6,
+						Dimensions: map[string]string{
+							"source": "sdk.zdm.test",
+							"app":    "sdktest",
+						},
+						MetadataFields: &_struct.Struct{
+							Fields: map[string]*_struct.Value{
+								"srckey": {
+									Kind: &_struct.Value_StringValue{
+										StringValue: "srcvalue",
+									},
+								},
+							},
+						},
+					},
+					{
+						Metric:    "failing1",
+						Value:     2,
+						Timestamp: time.Now().UnixNano() / 1e6,
+						Dimensions: map[string]string{
+							"source": "sdk.zdm.test",
+							"app":    "sdktest",
+						},
+						MetadataFields: &_struct.Struct{
+							Fields: map[string]*_struct.Value{
+								"srckey": {
+									Kind: &_struct.Value_StringValue{
+										StringValue: "srcvalue",
+									},
+								},
+							},
+						},
+					},
+				}
+				compactMetrics, failedMetrics := e.ConvertMetrics(context.TODO(), inputMetrics)
+
+				Ω(failedMetrics).Should(HaveLen(1))
+				Ω(compactMetrics).Should(HaveLen(1))
+				// Skip bundler delay thresholds.
+				e.Flush()
+			})
+
+			It("returns compact metrics if failed metrics from batch were registered after retry", func() {
+				firstResponses := make([]*data_registry.RegisterMetricVerboseResponse, 0)
+				verboseResponse1 := &data_registry.RegisterMetricVerboseResponse{
+					Response: &data_registry.RegisterMetricResponse{
+						InstanceId: "id123456canonical1",
+						Name:       "canonical1",
+					},
+				}
+				errorResponse := &data_registry.RegisterMetricVerboseResponse{
+					Error: "error occured",
+				}
+				firstResponses = append(firstResponses, verboseResponse1, errorResponse)
+
+				firstStreamMock := &data_registry.MockDataRegistryService_CreateOrUpdateMetricsClient{}
+				firstStreamMock.On("Send", mock.Anything).Return(nil)
+				firstStreamMock.On("CloseAndRecv").Return(&data_registry.RegisterMetricsResponse{
+					Responses: firstResponses,
+				}, nil)
+
+				retryResponses := make([]*data_registry.RegisterMetricVerboseResponse, 0)
+				verboseResponse2 := &data_registry.RegisterMetricVerboseResponse{
+					Response: &data_registry.RegisterMetricResponse{
+						InstanceId: "id123456canonical2",
+						Name:       "canonical2",
+					},
+				}
+				retryResponses = append(retryResponses, verboseResponse2)
+
+				retryStreamMock := &data_registry.MockDataRegistryService_CreateOrUpdateMetricsClient{}
+				retryStreamMock.On("Send", mock.Anything).Return(nil)
+				retryStreamMock.On("CloseAndRecv").Return(&data_registry.RegisterMetricsResponse{
+					Responses: retryResponses,
+				}, nil)
+
+				// 1 registered, 1 failed
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
+					Return(firstStreamMock, nil).Once()
+				// trying to reregister the failed one, error occurred
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
+					Return(nil, errors.New("Error closing stream")).Once()
+				// retrying with backoff, 1 registered
+				regout.On("CreateOrUpdateMetrics", mock.Anything, mock.Anything).
+					Return(retryStreamMock, nil).Once()
+				inputMetrics := []*data_receiver.Metric{
+					{
+						Metric:    "canonical1",
+						Value:     1,
+						Timestamp: time.Now().UnixNano() / 1e6,
+						Dimensions: map[string]string{
+							"source": "sdk.zdm.test",
+							"app":    "sdktest",
+						},
+						MetadataFields: &_struct.Struct{
+							Fields: map[string]*_struct.Value{
+								"srckey": {
+									Kind: &_struct.Value_StringValue{
+										StringValue: "srcvalue",
+									},
+								},
+							},
+						},
+					},
+					{
+						Metric:    "canonical2",
+						Value:     2,
+						Timestamp: time.Now().UnixNano() / 1e6,
+						Dimensions: map[string]string{
+							"source": "sdk.zdm.test",
+							"app":    "sdktest",
+						},
+						MetadataFields: &_struct.Struct{
+							Fields: map[string]*_struct.Value{
+								"srckey": {
+									Kind: &_struct.Value_StringValue{
+										StringValue: "srcvalue",
+									},
+								},
+							},
+						},
+					},
+				}
+				compactMetrics, failedMetrics := e.ConvertMetrics(context.TODO(), inputMetrics)
+
+				Ω(failedMetrics).Should(BeEmpty())
+				Ω(compactMetrics).Should(HaveLen(2))
 				// Skip bundler delay thresholds.
 				e.Flush()
 			})

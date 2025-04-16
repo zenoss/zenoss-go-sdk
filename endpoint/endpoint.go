@@ -28,6 +28,7 @@ import (
 	data_registry "github.com/zenoss/zenoss-protobufs/go/cloud/data-registry"
 	"github.com/zenoss/zenoss-protobufs/go/cloud/data_receiver"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/twmb/murmur3"
 	"github.com/zenoss/zenoss-go-sdk/internal/ttl"
@@ -64,6 +65,14 @@ const (
 	// DefaultMaxTTL is the default maximum TTL for local cache.
 	// Overridden by Config.MaxTTL.
 	DefaultMaxTTL = 12 * time.Hour
+
+	// DefaultInitialBackoff is the default initial backoff while retrying to register metrics.
+	// Overriden by Config.InitialBackoff.
+	DefaultInitialBackoff = 3 * time.Second
+
+	// DefaultNumberOfRetries is the default number of retry attempts for the backoff strategy.
+	// Overriden by Config.NumberOfRetries.
+	DefaultNumberOfRetries = 3
 
 	// APIKeyHeader is the gRPC header field containing a Zenoss API key.
 	APIKeyHeader = "zenoss-api-key"
@@ -135,6 +144,14 @@ type Config struct {
 	// CacheSizeLimit for local cache
 	CacheSizeLimit int `yaml:"cacheSizeLimit"`
 
+	// InitialBackoff for register retries.
+	// Default: 3 seconds
+	InitialBackoff time.Duration `yaml:"initialBackoff"`
+
+	// NumberOfRetries for registering.
+	// Default: 3 times
+	NumberOfRetries uint `yaml:"NumberOfRetries"`
+
 	// ExcludedTags are tags to exclude when generating hash
 	ExcludedTags []string
 }
@@ -191,6 +208,12 @@ type MetricIDNameAndHash struct {
 	hash, id, name string
 }
 
+type FailedRegistrationContext struct {
+	Metric *data_receiver.Metric
+	Index  int // an index of metric in the batch to preserve the order
+	Error  string
+}
+
 // initCache initialises the ttl cache used to store metric ids
 func initCache(cacheSizeLimit, minTTL, maxTTL int) *ttlcache.Cache[string, MetricIDNameAndHash] {
 	return ttlcache.New[string, MetricIDNameAndHash](
@@ -225,6 +248,14 @@ func New(config Config) (*Endpoint, error) {
 
 	if config.ModelTTL == 0 {
 		config.ModelTTL = DefaultModelTTL
+	}
+
+	if config.InitialBackoff == 0 {
+		config.InitialBackoff = DefaultInitialBackoff
+	}
+
+	if config.NumberOfRetries == 0 {
+		config.NumberOfRetries = DefaultNumberOfRetries
 	}
 
 	if config.LoggerConfig.Fields == nil {
@@ -497,27 +528,76 @@ func (e *Endpoint) ConvertMetrics(ctx context.Context, batch []*data_receiver.Me
 // registerMetrics will register metric using dataRegistry
 func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver.Metric) ([]bool, []MetricIDNameAndHash) {
 	successes := make([]bool, len(metrics))
-	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, 0, len(metrics))
-	registerMetricsresponse, err := e.CreateOrUpdateMetrics(ctx, metrics)
+	metricIDsNamesAndHashes := make([]MetricIDNameAndHash, len(metrics))
+
+	expBoff := backoff.NewExponentialBackOff()
+	expBoff.InitialInterval = e.config.InitialBackoff
+	registerMetricsresponse, err := backoff.Retry(
+		ctx,
+		func() (*data_registry.RegisterMetricsResponse, error) {
+			return e.CreateOrUpdateMetrics(ctx, metrics)
+		},
+		backoff.WithBackOff(expBoff),
+		backoff.WithMaxTries(e.config.NumberOfRetries),
+	)
 	if err != nil {
 		log.Log(e, log.LevelError, log.Fields{"error": err}, "Unable to register metrics")
-		return successes, metricIDsNamesAndHashes
+		return successes, []MetricIDNameAndHash{}
 	}
+
+	failedMetrics := make([]*FailedRegistrationContext, 0)
 
 	for i, response := range registerMetricsresponse.Responses {
 		if response.Error != "" {
-			log.Log(e, log.LevelError, log.Fields{"error": response.Error}, "Metric from batch was not registered")
-			metricIDsNamesAndHashes = append(metricIDsNamesAndHashes, MetricIDNameAndHash{})
+			failedMetrics = append(failedMetrics, &FailedRegistrationContext{
+				Metric: metrics[i],
+				Index:  i,
+				Error:  response.Error,
+			})
 			continue
 		}
 		metricMetadataHash := e.GetMetadataHash(metrics[i])
-		metricIDsNamesAndHashes = append(metricIDsNamesAndHashes,
-			MetricIDNameAndHash{
-				id:   response.Response.InstanceId,
-				name: response.Response.Name,
-				hash: metricMetadataHash,
-			})
+		metricIDsNamesAndHashes[i] = MetricIDNameAndHash{
+			id:   response.Response.InstanceId,
+			name: response.Response.Name,
+			hash: metricMetadataHash,
+		}
 		successes[i] = true
+	}
+
+	if len(failedMetrics) > 0 {
+		// retrying to register failed metrics from batch
+		expBoff.Reset()
+		metricsToRetry := extractMetrics(failedMetrics)
+		retryResponse, err := backoff.Retry(
+			ctx,
+			func() (*data_registry.RegisterMetricsResponse, error) {
+				return e.CreateOrUpdateMetrics(ctx, metricsToRetry)
+			},
+			backoff.WithBackOff(expBoff),
+			backoff.WithMaxTries(e.config.NumberOfRetries),
+		)
+		if err != nil {
+			for _, failedMetric := range failedMetrics {
+				log.Log(e, log.LevelError, log.Fields{"error": failedMetric.Error}, "Metric from batch was not registered")
+			}
+			return successes, metricIDsNamesAndHashes
+		}
+		for j, retryResp := range retryResponse.Responses {
+			originalIndex := failedMetrics[j].Index
+			if retryResp.Error == "" {
+				successes[originalIndex] = true
+
+				metricMetadataHash := e.GetMetadataHash(failedMetrics[j].Metric)
+				metricIDsNamesAndHashes[originalIndex] = MetricIDNameAndHash{
+					id:   retryResp.Response.InstanceId,
+					name: retryResp.Response.Name,
+					hash: metricMetadataHash,
+				}
+			} else {
+				log.Log(e, log.LevelError, log.Fields{"error": retryResp.Error}, "Metric from batch was not registered")
+			}
+		}
 	}
 	return successes, metricIDsNamesAndHashes
 }
@@ -982,4 +1062,12 @@ func (e *Endpoint) putEvents(events *data_receiver.Events) {
 		zstats.SentEvents.M(int64(succeededEventsCount)),
 		zstats.FailedEvents.M(int64(failedEventsCount)),
 	)
+}
+
+func extractMetrics(failedMetrics []*FailedRegistrationContext) []*data_receiver.Metric {
+	metrics := make([]*data_receiver.Metric, len(failedMetrics))
+	for i, failedMetric := range failedMetrics {
+		metrics[i] = failedMetric.Metric
+	}
+	return metrics
 }
