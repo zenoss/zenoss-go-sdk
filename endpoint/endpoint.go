@@ -542,7 +542,7 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 	)
 	if err != nil {
 		log.Log(e, log.LevelError, log.Fields{"error": err}, "Unable to register metrics")
-		return successes, metricIDsNamesAndHashes
+		return successes, []MetricIDNameAndHash{}
 	}
 
 	failedMetrics := make([]*FailedRegistrationContext, 0)
@@ -566,7 +566,7 @@ func (e *Endpoint) registerMetrics(ctx context.Context, metrics []*data_receiver
 	}
 
 	if len(failedMetrics) > 0 {
-		// retrying to register failed metrics from batch
+		// retrying to register failed metrics from batchg
 		expBoff.Reset()
 		metricsToRetry := extractMetrics(failedMetrics)
 		retryResponse, err := backoff.Retry(
