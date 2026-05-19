@@ -46,19 +46,10 @@ node('docker') {
 
             stage('Validate test results') {
                 junit 'junit.xml'
-                step([
-                    $class: 'CoberturaPublisher',
-                    autoUpdateHealth: false,
-                    autoUpdateStability: false,
-                    coberturaReportFile: 'coverage/coverage.xml',
-                    failUnhealthy: true,
-                    failUnstable: true,
-                    maxNumberOfBuilds: 0,
-                    onlyStable: false,
-                    sourceEncoding: 'ASCII',
-                    zoomCoverageChart: false,
-                    lineCoverageTargets: '100.0, 90.0, 50.0',
-                ])
+                recordCoverage(
+                    tools: [[parser: 'COBERTURA', pattern: 'coverage/coverage.xml']],
+                    qualityGates: [[threshold: 90.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']]
+                )
             }
         } finally {
             stage('Clean test environment') {
