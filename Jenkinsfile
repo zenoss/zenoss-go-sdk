@@ -29,21 +29,6 @@ node('docker') {
                 }
             }
 
-            stage('SonarQube PR analysis') {
-                String scannerHome = tool 'SonarScanner'
-                List<String> args = [
-                    "${scannerHome}/bin/sonar-scanner",
-                    '-Dproject.settings=./sonar-project.properties',
-                    "-Dsonar.pullrequest.key=${env.ghprbPullId}",
-                    "-Dsonar.pullrequest.branch=${env.ghprbSourceBranch}",
-                    "-Dsonar.pullrequest.base=${env.ghprbTargetBranch}",
-                    '-Dsonar.buildbreaker.skip=true',
-                ]
-                withSonarQubeEnv('sonarqube.zenoss.io') {
-                    sh args.join(' ')
-                }
-            }
-
             stage('Validate test results') {
                 junit 'junit.xml'
                 recordCoverage(
